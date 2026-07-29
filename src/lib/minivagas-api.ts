@@ -1,17 +1,20 @@
 import axios from 'axios';
 
 const BASE = 'https://apiminivagas.estagius.com.br/api';
-const TOKEN =
-  (import.meta.env.VITE_PUBLIC_TOKEN as string | undefined) ||
-  (import.meta.env.VITE_MINIVAGAS_TOKEN as string | undefined) ||
-  '';
+
+function readMinivagasToken(): string {
+  const raw =
+    (import.meta.env.VITE_PUBLIC_TOKEN as string | undefined) ||
+    (import.meta.env.VITE_MINIVAGAS_TOKEN as string | undefined) ||
+    '';
+  return String(raw).trim().replace(/^["']|["']$/g, '');
+}
+
+function getToken(): string {
+  return readMinivagasToken();
+}
 
 const CACHE_TTL_MS = 30_000;
-
-const client = axios.create({
-  baseURL: BASE,
-  headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
-});
 
 type CacheEntry<T> = {
   expiresAt: number;
@@ -26,13 +29,14 @@ function getCacheKey(path: string, params?: Record<string, unknown>) {
 }
 
 export function isMinivagasConfigured(): boolean {
-  return Boolean(TOKEN);
+  return Boolean(getToken());
 }
 
 export async function getEstagius<T>(
   path: string,
   params?: Record<string, unknown>
 ): Promise<T> {
+  const TOKEN = getToken();
   if (!TOKEN) {
     throw new Error('Token Minivagas não configurado (VITE_PUBLIC_TOKEN).');
   }
@@ -48,6 +52,11 @@ export async function getEstagius<T>(
   if (cached?.promise) {
     return cached.promise as Promise<T>;
   }
+
+  const client = axios.create({
+    baseURL: BASE,
+    headers: { Authorization: `Bearer ${TOKEN}` },
+  });
 
   const promise = client
     .get<T>(path, { params })

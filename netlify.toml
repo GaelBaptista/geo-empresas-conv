@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Variáveis secretas (VITE_PUBLIC_TOKEN, etc.) configure no painel:
+# Site settings → Environment variables → Add a variable
+# Depois: Deploys → Trigger deploy → Clear cache and deploy site
