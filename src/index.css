@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-visit: hsl(var(--visit));
+  --color-visit-foreground: hsl(var(--visit-foreground));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 195 35% 96.5%;
+  --foreground: 200 35% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 200 35% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 200 35% 12%;
+  --primary: 178 68% 30%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 195 28% 92%;
+  --secondary-foreground: 200 30% 22%;
+  --muted: 195 22% 93%;
+  --muted-foreground: 200 12% 40%;
+  --accent: 178 35% 92%;
+  --accent-foreground: 178 68% 24%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 195 18% 86%;
+  --input: 195 18% 86%;
+  --ring: 178 68% 30%;
+  --visit: 32 92% 46%;
+  --visit-foreground: 0 0% 100%;
+  --radius: 0.85rem;
+  --app-glow-a: 178 55% 78% / 0.4;
+  --app-glow-b: 198 65% 82% / 0.35;
+  --app-surface: 195 35% 96.5%;
+  --app-surface-end: 195 30% 93%;
+}
+
+.dark {
+  --background: 200 28% 8%;
+  --foreground: 195 20% 94%;
+  --card: 200 24% 11%;
+  --card-foreground: 195 20% 94%;
+  --popover: 200 24% 11%;
+  --popover-foreground: 195 20% 94%;
+  --primary: 174 58% 42%;
+  --primary-foreground: 200 40% 6%;
+  --secondary: 200 20% 16%;
+  --secondary-foreground: 195 18% 90%;
+  --muted: 200 18% 15%;
+  --muted-foreground: 195 10% 62%;
+  --accent: 178 25% 16%;
+  --accent-foreground: 174 55% 70%;
+  --destructive: 0 70% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 16% 20%;
+  --input: 200 16% 20%;
+  --ring: 174 58% 42%;
+  --visit: 34 90% 52%;
+  --visit-foreground: 30 40% 8%;
+  --app-glow-a: 174 50% 28% / 0.28;
+  --app-glow-b: 210 45% 24% / 0.25;
+  --app-surface: 200 28% 8%;
+  --app-surface-end: 200 26% 6%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 8% -8%, hsl(var(--app-glow-a)), transparent 55%),
+      radial-gradient(ellipse 55% 40% at 92% 0%, hsl(var(--app-glow-b)), transparent 50%),
+      linear-gradient(180deg, hsl(var(--app-surface)) 0%, hsl(var(--app-surface-end)) 100%);
+    min-height: 100vh;
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+  }
+}
+
+/* Leaflet */
+.leaflet-container {
+  font-family: var(--font-sans);
+  background: hsl(var(--muted));
+}
+
+.custom-company-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: 0 12px 36px hsl(200 40% 10% / 0.18);
+  padding: 0;
+  overflow: hidden;
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+
+.dark .leaflet-popup-content-wrapper {
+  box-shadow: 0 12px 36px hsl(0 0% 0% / 0.45);
+}
+
+.leaflet-popup-content {
+  margin: 12px;
+}
+
+.leaflet-popup-tip {
+  box-shadow: none;
+  background: hsl(var(--card));
+}
+
+.leaflet-control-zoom a {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+.leaflet-control-attribution {
+  background: hsl(var(--card) / 0.85) !important;
+  color: hsl(var(--muted-foreground)) !important;
+}

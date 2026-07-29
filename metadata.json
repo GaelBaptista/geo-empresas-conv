@@ -1,0 +1,6 @@
+{
+  "name": "Gestão de Visitas ",
+  "description": "Sistema de acompanhamento e controle de visitas a empresas conveniadas em Fortaleza-CE com mapa interativo por bairros.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
