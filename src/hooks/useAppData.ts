@@ -180,6 +180,13 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
       void loadMinivagasBundle(enriched)
         .then((bundle) => {
           if (loadId !== loadRequestIdRef.current) return;
+          if (!bundle) {
+            setMinivagas(null);
+            setMinivagasError(
+              'Token do Minivagas não configurado. Defina VITE_PUBLIC_TOKEN no .env (ou nas variáveis do deploy) e faça o build de novo.'
+            );
+            return;
+          }
           setMinivagas(bundle);
           setMinivagasError(null);
         })
@@ -188,7 +195,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
           console.warn('Falha ao carregar Minivagas', err);
           setMinivagas(null);
           setMinivagasError(
-            'Não carregou observações/ranking do Minivagas. Verifique VITE_PUBLIC_TOKEN.'
+            'Não carregou observações/ranking do Minivagas. Verifique VITE_PUBLIC_TOKEN e a conexão com apiminivagas.estagius.com.br.'
           );
         });
     } catch (e: unknown) {
