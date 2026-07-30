@@ -5,6 +5,13 @@
 [build.environment]
   NODE_VERSION = "20"
 
-# Variáveis secretas (VITE_PUBLIC_TOKEN, etc.) configure no painel:
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Cron também definido no export config da function (*/20 * * * * UTC).
+# Blob do site (entrevista-freeze) NÃO reseta em deploy.
+
+# Variáveis secretas (VITE_PUBLIC_TOKEN / MINIVAGAS_TOKEN) no painel Netlify:
 # Site settings → Environment variables → Add a variable
 # Depois: Deploys → Trigger deploy → Clear cache and deploy site

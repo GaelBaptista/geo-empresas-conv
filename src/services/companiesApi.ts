@@ -121,9 +121,6 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
     lat: coords.lat,
     lng: coords.lng,
     convenioDate,
-    description: apiCompany.type_charge
-      ? `Tipo de cobrança: ${apiCompany.type_charge}`
-      : undefined,
     totalVisits: 0,
     activeTrainees,
     inactiveTrainees,

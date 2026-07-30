@@ -21,6 +21,8 @@ export function CompanyReputationCard({
     reputation.hireRate != null ? Math.round(reputation.hireRate * 100) : 0;
   const rejectPct =
     reputation.rejectRate != null ? Math.round(reputation.rejectRate * 100) : 0;
+  const noShowPct =
+    reputation.noShowRate != null ? Math.round(reputation.noShowRate * 100) : 0;
 
   return (
     <div
@@ -33,34 +35,35 @@ export function CompanyReputationCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide opacity-80">
-            Reputação Minivagas
+            Reputação do grupo
           </p>
           <p className="text-lg font-bold mt-0.5">{reputation.label}</p>
           <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
-            Entre os candidatos com decisão (contratado ou reprovado). Enviados incluem
-            também quem ainda está no funil.
+            Resultado dos candidatos enviados para entrevista neste grupo.
           </p>
         </div>
         <div className="text-right shrink-0">
           <p className="text-3xl font-bold tabular-nums leading-none">
             {reputation.score != null ? reputation.score : '—'}
           </p>
-          <p className="text-[10px] opacity-70 mt-1">score / 100</p>
+          <p className="text-[10px] opacity-70 mt-1">nota / 100</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <Metric label="Enviados" value={reputation.enviados} />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+        <Metric label="Candidatos" value={reputation.enviados} />
         <Metric label="Contratados" value={reputation.contratados} />
         <Metric label="Reprovados" value={reputation.reprovados} />
-        <Metric label="No funil" value={reputation.emFunil} />
+        <Metric label="Faltas" value={reputation.naoCompareceu} />
+        <Metric label="Em entrevista" value={reputation.emFunil} />
       </div>
 
       {reputation.decididos > 0 && (
         <div className="space-y-1.5">
-          <div className="flex justify-between text-[11px] font-medium">
-            <span>Contratação {pct(reputation.hireRate)}</span>
-            <span>Reprovação {pct(reputation.rejectRate)}</span>
+          <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] font-medium">
+            <span>Contratou {pct(reputation.hireRate)}</span>
+            <span>Reprovou {pct(reputation.rejectRate)}</span>
+            <span>Faltou {pct(reputation.noShowRate)}</span>
           </div>
           <div className="h-2.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden flex">
             <div
@@ -73,9 +76,14 @@ export function CompanyReputationCard({
               style={{ width: `${rejectPct}%` }}
               title="Reprovados"
             />
+            <div
+              className="h-full bg-amber-500"
+              style={{ width: `${noShowPct}%` }}
+              title="Não compareceu"
+            />
           </div>
           <p className="text-[10px] opacity-70">
-            {reputation.decididos} decisão(ões) · {reputation.emFunil} ainda no funil
+            {reputation.decididos} com resultado · {reputation.emFunil} ainda em entrevista
           </p>
         </div>
       )}

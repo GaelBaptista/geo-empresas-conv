@@ -7,15 +7,71 @@ export type LocationSource = 'gps' | 'fortaleza';
 /** Centro de Fortaleza — padrão quando o usuário não permite GPS. */
 export const FORTALEZA_CENTER: LatLng = { lat: -3.7327, lng: -38.527 };
 
+const STORAGE_KEY = 'VISITAS_USER_LOCATION';
+
+type StoredLocation = {
+  lat: number;
+  lng: number;
+  source: LocationSource;
+  savedAt: string;
+};
+
 let cachedUserLocation: LatLng | null = FORTALEZA_CENTER;
 let cachedLocationSource: LocationSource = 'fortaleza';
+
+/** Lê a última localização escolhida (GPS ou Fortaleza). */
+export function readStoredUserLocation(): {
+  position: LatLng;
+  source: LocationSource;
+} | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredLocation>;
+    if (
+      typeof parsed.lat !== 'number' ||
+      !Number.isFinite(parsed.lat) ||
+      typeof parsed.lng !== 'number' ||
+      !Number.isFinite(parsed.lng)
+    ) {
+      return null;
+    }
+    const source: LocationSource =
+      parsed.source === 'gps' || parsed.source === 'fortaleza'
+        ? parsed.source
+        : 'fortaleza';
+    return {
+      position: { lat: parsed.lat, lng: parsed.lng },
+      source,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUserLocation(pos: LatLng, source: LocationSource): void {
+  try {
+    const payload: StoredLocation = {
+      lat: pos.lat,
+      lng: pos.lng,
+      source,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 export function setCachedUserLocation(
   pos: LatLng | null,
   source: LocationSource = 'gps'
 ): void {
-  cachedUserLocation = pos ?? FORTALEZA_CENTER;
-  cachedLocationSource = pos ? source : 'fortaleza';
+  const next = pos ?? FORTALEZA_CENTER;
+  const nextSource = pos ? source : 'fortaleza';
+  cachedUserLocation = next;
+  cachedLocationSource = nextSource;
+  writeStoredUserLocation(next, nextSource);
 }
 
 export function getCachedUserLocation(): LatLng {
@@ -29,6 +85,11 @@ export function getCachedLocationSource(): LocationSource {
 export function clearCachedUserLocation(): void {
   cachedUserLocation = FORTALEZA_CENTER;
   cachedLocationSource = 'fortaleza';
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function haversineKm(a: LatLng, b: LatLng): number {

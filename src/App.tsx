@@ -211,17 +211,11 @@ export default function App() {
               </Card>
             )}
             {minivagas && (
-              <>
-                <p className="text-xs text-muted-foreground px-1">
-                  {minivagas.matchedObservacoes} empresa(s) com observação ·{' '}
-                  {minivagas.matchedHiring} com histórico de candidatura (mesmo CNPJ do mapa).
-                </p>
-                <HiringRankPanel
-                  bundle={minivagas}
-                  companies={companies}
-                  onSelectCompany={setSelectedCompanyForDossier}
-                />
-              </>
+              <HiringRankPanel
+                bundle={minivagas}
+                companies={companies}
+                onSelectCompany={setSelectedCompanyForDossier}
+              />
             )}
           </div>
         )}

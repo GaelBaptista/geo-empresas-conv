@@ -82,7 +82,10 @@ export interface Visit {
 export interface ScheduleItem {
   id: string;
   title: string;
+  /** @deprecated use observations — mantido por compatibilidade */
   description?: string;
+  /** Campo `observations` da agenda Estagius */
+  observations?: string;
   type: string;
   status: string;
   startsAt: string;

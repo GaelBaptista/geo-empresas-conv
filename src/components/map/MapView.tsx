@@ -3,10 +3,11 @@ import L from 'leaflet';
 import { MapPin, Users, UserX, Filter, X, Search, LocateFixed, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { DayRoutePanel } from '@/components/map/DayRoutePanel';
 import {
@@ -24,8 +25,6 @@ import {
 import { normalizeMatchText, formatScheduleDate, googleMapsCompanyUrl } from '@/lib/schedule-match';
 import { spreadOverlappingCompanies } from '@/lib/map-spread';
 import {
-  companyDistanceKm,
-  formatDistanceKm,
   resolveMapCityForLocation,
   type LatLng,
   type LocationSource,
@@ -102,7 +101,7 @@ export function MapView({
   const [internFilter, setInternFilter] = useState<InternFilter>('with_active');
   const [selectedGroupId, setSelectedGroupId] = useState<number | 'ALL'>('ALL');
   const [nameQuery, setNameQuery] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(true);
 
   const filteredByGroup = useMemo(
@@ -259,7 +258,13 @@ export function MapView({
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     mapInstanceRef.current = map;
 
+    const invalidate = () => map.invalidateSize();
+    requestAnimationFrame(invalidate);
+    window.setTimeout(invalidate, 200);
+    window.addEventListener('resize', invalidate);
+
     return () => {
+      window.removeEventListener('resize', invalidate);
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
@@ -391,55 +396,52 @@ export function MapView({
       const hasActive = (company.activeTrainees ?? 0) > 0;
       const hasVisit = companiesWithVisitIds?.has(company.id) ?? false;
       const nextVisit = getNextVisitForCompany?.(company.id) || null;
-      const distanceKm = userLocation
-        ? companyDistanceKm(company, userLocation)
-        : null;
       // VIS âmbar · com estagiário verde · sem estagiário vermelho
-      const pinColor = hasVisit ? '#d97706' : hasActive ? '#10b981' : '#dc2626';
-      const borderColor = pinColor;
+      const pinColor = hasVisit ? '#d97706' : hasActive ? '#059669' : '#dc2626';
+      const soft = hasVisit ? '#fffbeb' : hasActive ? '#ecfdf5' : '#fef2f2';
+      const labelBg = hasVisit ? '#fffbeb' : hasActive ? '#ffffff' : '#fef2f2';
 
       const iconHtml = `
-        <div style="cursor:pointer;text-align:center;transform:translateY(-4px);">
-          <div style="
-            display:inline-flex;align-items:center;gap:5px;
-            background:${hasVisit ? '#fffbeb' : hasActive ? '#fff' : '#fef2f2'};color:#0f172a;
-            border:1.5px solid ${borderColor};
-            border-radius:6px;padding:3px 8px;
-            box-shadow:0 2px 8px rgba(15,23,42,.14);
-            max-width:170px;
-          ">
-            <span style="
-              width:7px;height:7px;border-radius:9999px;flex-shrink:0;
-              background:${pinColor};
-            "></span>
-            <span style="
-              font-size:11px;font-weight:650;line-height:1.15;
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-            ">${escapeHtml(shortLabel)}</span>
+        <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;width:150px;">
+          <div style="position:relative;width:28px;height:36px;flex-shrink:0;">
+            <svg width="28" height="36" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 5px rgba(15,23,42,.28));">
+              <path d="M17 0C7.611 0 0 7.5 0 16.75C0 28.5 17 42 17 42S34 28.5 34 16.75C34 7.5 26.389 0 17 0Z" fill="${pinColor}"/>
+              <circle cx="17" cy="16" r="7.5" fill="${soft}"/>
+              <circle cx="17" cy="16" r="3.5" fill="${pinColor}"/>
+            </svg>
             ${
               hasVisit
-                ? `<span style="font-size:9px;font-weight:800;letter-spacing:.02em;color:#b45309;flex-shrink:0;background:#fde68a;border-radius:3px;padding:1px 3px;">VIS</span>`
+                ? `<span style="position:absolute;top:-5px;right:-10px;font-size:8px;font-weight:800;letter-spacing:.02em;color:#92400e;background:#fde68a;border:1px solid #f59e0b;border-radius:999px;padding:1px 4px;box-shadow:0 1px 3px rgba(0,0,0,.15);">VIS</span>`
                 : ''
             }
           </div>
           <div style="
-            width:8px;height:8px;background:${borderColor};
-            transform:rotate(45deg);margin:-3px auto 0;
-            border-right:1px solid ${borderColor};border-bottom:1px solid ${borderColor};
-          "></div>
+            margin-top:2px;max-width:148px;
+            display:inline-flex;align-items:center;gap:4px;
+            background:${labelBg};color:#0f172a;
+            border:1.5px solid ${pinColor};
+            border-radius:8px;padding:3px 7px;
+            box-shadow:0 2px 8px rgba(15,23,42,.14);
+          ">
+            <span style="
+              font-size:10px;font-weight:700;line-height:1.15;
+              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            ">${escapeHtml(shortLabel)}</span>
+          </div>
         </div>
       `;
 
       const customIcon = L.divIcon({
         html: iconHtml,
         className: 'custom-company-pin',
-        iconSize: [170, 36],
-        iconAnchor: [85, 32],
-        popupAnchor: [0, -28],
+        iconSize: [150, 58],
+        iconAnchor: [75, 36],
+        popupAnchor: [0, -34],
       });
 
       const marker = L.marker([company.mapLat, company.mapLng], { icon: customIcon }).addTo(map);
       const active = company.activeTrainees ?? 0;
+      const visitObs = (nextVisit?.observations || nextVisit?.description || '').trim();
 
       const popupDiv = document.createElement('div');
       popupDiv.style.minWidth = '250px';
@@ -454,13 +456,6 @@ export function MapView({
               ? `<p style="margin:2px 0 0;font-size:11px;color:#64748b;">Razão social: ${escapeHtml(company.name)}</p>`
               : ''
           }
-          ${
-            distanceKm != null && usingGps
-              ? `<p style="margin:6px 0 0;font-size:12px;font-weight:700;color:#2563eb;">≈ ${escapeHtml(formatDistanceKm(distanceKm))} de você</p>`
-              : distanceKm != null
-                ? `<p style="margin:6px 0 0;font-size:12px;font-weight:700;color:#0f766e;">≈ ${escapeHtml(formatDistanceKm(distanceKm))} do centro de Fortaleza</p>`
-                : ''
-          }
         </div>
         <div style="padding:10px 0;font-size:12px;color:#475569;">
           <p style="margin:0 0 6px;"><strong>Estagiários ativos:</strong> ${active}</p>
@@ -470,13 +465,22 @@ export function MapView({
               : ''
           }
           <p style="margin:0 0 4px;"><strong>Endereço:</strong> ${escapeHtml(company.address)}</p>
-          <p style="margin:0 0 6px;"><strong>Contato:</strong> ${escapeHtml(company.contactPerson)} (${escapeHtml(company.phone)})</p>
+          ${
+            company.phone && company.phone !== '—'
+              ? `<p style="margin:0 0 6px;"><strong>Telefone:</strong> ${escapeHtml(company.phone)}</p>`
+              : ''
+          }
           ${
             nextVisit
               ? `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;">
                   <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;">Visita agendada</p>
                   <p style="margin:0;font-size:12px;color:#92400e;font-weight:600;">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
                   <p style="margin:4px 0 0;font-size:11px;color:#78350f;">${escapeHtml(nextVisit.title)}</p>
+                  ${
+                    visitObs
+                      ? `<p style="margin:6px 0 0;font-size:11px;color:#78350f;line-height:1.35;"><strong>Observações:</strong> ${escapeHtml(visitObs)}</p>`
+                      : ''
+                  }
                 </div>`
               : ''
           }
@@ -507,7 +511,6 @@ export function MapView({
     companiesWithVisitIds,
     getNextVisitForCompany,
     userLocation,
-    usingGps,
   ]);
 
   // Ver no mapa: voa até o pin e abre popup
@@ -523,8 +526,8 @@ export function MapView({
 
     const tryFocus = () => {
       const marker = markersRef.current[company.id];
-      const lat = company.mapLat ?? company.lat;
-      const lng = company.mapLng ?? company.lng;
+      const lat = company.lat;
+      const lng = company.lng;
 
       map.flyTo([lat, lng], 17, { duration: 1.1, easeLinearity: 0.25 });
 
@@ -556,233 +559,14 @@ export function MapView({
     return () => window.clearTimeout(t);
   }, [focusMapRequest, companies, visibleCompanies, onFocusConsumed]);
 
-  return (
-    <div className="relative w-full h-[calc(100vh-8.5rem)] min-h-[480px] rounded-2xl overflow-hidden border border-border/80 bg-muted shadow-inner shadow-black/5 dark:shadow-black/40">
-      <div className="absolute top-3 left-3 right-3 sm:right-auto z-[1000] w-auto sm:w-[340px] max-w-[calc(100%-1.5rem)]">
-        {!filtersOpen ? (
-          <Button className="shadow-lg" onClick={() => setFiltersOpen(true)}>
-            <Filter />
-            Filtros
-            <Badge variant="secondary" className="ml-1">
-              {visibleCompanies.length}
-            </Badge>
-          </Button>
-        ) : (
-          <Card className="shadow-xl border-border/70 bg-card/95 backdrop-blur-xl overflow-visible">
-            <CardHeader className="p-4 pb-3 flex-row items-start justify-between space-y-0">
-              <div>
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <Filter className="size-4 text-primary" />
-                  Filtros do mapa
-                </CardTitle>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  {nameQuery.trim() ? `“${nameQuery.trim()}” · ` : ''}
-                  {internLabel} · {selectedGroupLabel} · {selectedCity} · {selectedNeighborhoodLabel}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 shrink-0"
-                onClick={() => setFiltersOpen(false)}
-              >
-                <X className="size-4" />
-              </Button>
-            </CardHeader>
-
-            <CardContent className="p-4 pt-0 space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Sua localização</Label>
-                <Button
-                  type="button"
-                  variant={usingGps ? 'secondary' : 'default'}
-                  className="w-full justify-start"
-                  disabled={locationRequesting}
-                  onClick={() => {
-                    didAutoCityFromGpsRef.current = false;
-                    requestLocation();
-                  }}
-                >
-                  {locationRequesting ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <LocateFixed className="size-4" />
-                  )}
-                  {usingGps ? 'Atualizar cidade' : 'Detectar minha cidade'}
-                </Button>
-                {usingGps ? (
-                  <p className="text-[11px] text-sky-700 dark:text-sky-300">
-                    Cidade detectada pela sua região · você pode trocar o filtro acima
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Cidade padrão: Fortaleza · toque para detectar a sua
-                  </p>
-                )}
-                {locationError && !usingGps && (
-                  <p className="text-[11px] text-muted-foreground">{locationError}</p>
-                )}
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Buscar empresa</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    className="pl-9 pr-9"
-                    placeholder="Digite o nome fantasia ou razão social..."
-                    value={nameQuery}
-                    onChange={(e) => setNameQuery(e.target.value)}
-                  />
-                  {nameQuery && (
-                    <button
-                      type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={() => setNameQuery('')}
-                      aria-label="Limpar busca"
-                    >
-                      <X className="size-3.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Estagiários</Label>
-                <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-                  {(
-                    [
-                      { id: 'with_active', label: 'Com', icon: Users },
-                      { id: 'without_active', label: 'Sem', icon: UserX },
-                      { id: 'all', label: 'Todas', icon: Filter },
-                    ] as const
-                  ).map((item) => {
-                    const Icon = item.icon;
-                    const active = internFilter === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setInternFilter(item.id);
-                          onSelectNeighborhood('ALL');
-                        }}
-                        className={cn(
-                          'flex flex-col items-center gap-1 rounded-md px-2 py-2 text-[11px] font-semibold transition cursor-pointer',
-                          active
-                            ? 'bg-card text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        <Icon className="size-3.5" />
-                        {item.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Grupo</Label>
-                <SearchableSelect
-                  value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
-                  options={groupOptions}
-                  placeholder="Escolher grupo"
-                  searchPlaceholder="Buscar grupo..."
-                  onChange={(value) => {
-                    setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
-                    onSelectNeighborhood('ALL');
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Cidade</Label>
-                <SearchableSelect
-                  value={selectedCity}
-                  options={cityOptions}
-                  placeholder="Escolher cidade"
-                  searchPlaceholder="Buscar cidade..."
-                  onChange={(city) => {
-                    setSelectedCity(city);
-                    onSelectNeighborhood('ALL');
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">Bairro</Label>
-                <SearchableSelect
-                  value={selectedNeighborhoodId}
-                  options={neighborhoodOptions}
-                  placeholder="Escolher bairro"
-                  searchPlaceholder="Buscar bairro..."
-                  onChange={onSelectNeighborhood}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg bg-muted/60 px-2 py-2">
-                  <p className="text-base font-bold text-foreground leading-none">
-                    {visibleCompanies.length}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-1">no mapa</p>
-                </div>
-                <div className="rounded-lg bg-emerald-50 px-2 py-2">
-                  <p className="text-base font-bold text-emerald-700 leading-none">
-                    {withActiveInCity}
-                  </p>
-                  <p className="text-[10px] text-emerald-700/80 mt-1">com ativos</p>
-                </div>
-                <div className="rounded-lg bg-slate-100 px-2 py-2">
-                  <p className="text-base font-bold text-slate-700 leading-none">
-                    {withoutActiveInCity}
-                  </p>
-                  <p className="text-[10px] text-slate-600 mt-1">sem ativos</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      <div className="absolute top-3 right-3 z-[1000] w-[min(100%-1.5rem,300px)] hidden sm:block max-h-[calc(100%-1.5rem)]">
-        {routeOpen ? (
-          <div className="relative max-h-full flex flex-col min-h-0">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute top-2 right-2 z-10 size-7 bg-card/80"
-              onClick={() => setRouteOpen(false)}
-            >
-              <X className="size-3.5" />
-            </Button>
-            <DayRoutePanel
-              schedules={schedules}
-              companies={companies}
-              userLocation={userLocation}
-              locationSource={locationSource}
-              onFocusCompany={onFocusCompany}
-            />
-          </div>
-        ) : (
-          <Button className="shadow-lg ml-auto flex" onClick={() => setRouteOpen(true)}>
-            Rota do dia
-          </Button>
-        )}
-      </div>
-
-      <div ref={mapContainerRef} className="w-full h-full z-10" />
-
-      <div className="absolute bottom-4 left-3 z-[1000] flex items-center gap-2 max-w-[calc(100%-1.5rem)] flex-wrap">
+  const filterPanel = (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Sua localização</Label>
         <Button
-          size="sm"
+          type="button"
           variant={usingGps ? 'secondary' : 'default'}
-          className="shadow-md"
+          className="w-full justify-start"
           disabled={locationRequesting}
           onClick={() => {
             didAutoCityFromGpsRef.current = false;
@@ -790,20 +574,245 @@ export function MapView({
           }}
         >
           {locationRequesting ? (
-            <Loader2 className="size-3.5 animate-spin" />
+            <Loader2 className="size-4 animate-spin" />
           ) : (
-            <LocateFixed className="size-3.5" />
+            <LocateFixed className="size-4" />
           )}
-          {usingGps ? 'Cidade detectada' : 'Detectar cidade'}
+          {usingGps ? 'Atualizar cidade' : 'Detectar minha cidade'}
         </Button>
-        <Badge
-          variant="secondary"
-          className="shadow-md bg-card/95 backdrop-blur border px-3 py-1.5 truncate"
-        >
-          <MapPin className="size-3.5 text-primary mr-1 shrink-0" />
-          {selectedCity}
-          {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
-        </Badge>
+        {usingGps ? (
+          <p className="text-[11px] text-sky-700 dark:text-sky-300">
+            Cidade detectada pela sua região
+          </p>
+        ) : (
+          <p className="text-[11px] text-muted-foreground">
+            Padrão: Fortaleza · toque para detectar a sua
+          </p>
+        )}
+        {locationError && !usingGps && (
+          <p className="text-[11px] text-muted-foreground">{locationError}</p>
+        )}
+      </div>
+
+      <Separator />
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Buscar empresa</Label>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            className="pl-9 pr-9"
+            placeholder="Nome fantasia ou razão social..."
+            value={nameQuery}
+            onChange={(e) => setNameQuery(e.target.value)}
+          />
+          {nameQuery && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={() => setNameQuery('')}
+              aria-label="Limpar busca"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Estagiários</Label>
+        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+          {(
+            [
+              { id: 'with_active', label: 'Com', icon: Users },
+              { id: 'without_active', label: 'Sem', icon: UserX },
+              { id: 'all', label: 'Todas', icon: Filter },
+            ] as const
+          ).map((item) => {
+            const Icon = item.icon;
+            const active = internFilter === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setInternFilter(item.id);
+                  onSelectNeighborhood('ALL');
+                }}
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-md px-2 py-2 text-[11px] font-semibold transition cursor-pointer',
+                  active
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Icon className="size-3.5" />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Grupo</Label>
+        <SearchableSelect
+          value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
+          options={groupOptions}
+          placeholder="Escolher grupo"
+          searchPlaceholder="Buscar grupo..."
+          onChange={(value) => {
+            setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
+            onSelectNeighborhood('ALL');
+          }}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Cidade</Label>
+        <SearchableSelect
+          value={selectedCity}
+          options={cityOptions}
+          placeholder="Escolher cidade"
+          searchPlaceholder="Buscar cidade..."
+          onChange={(city) => {
+            setSelectedCity(city);
+            onSelectNeighborhood('ALL');
+          }}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">Bairro</Label>
+        <SearchableSelect
+          value={selectedNeighborhoodId}
+          options={neighborhoodOptions}
+          placeholder="Escolher bairro"
+          searchPlaceholder="Buscar bairro..."
+          onChange={onSelectNeighborhood}
+        />
+      </div>
+
+      <Separator />
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-lg bg-muted/60 px-2 py-2">
+          <p className="text-base font-bold text-foreground leading-none">
+            {visibleCompanies.length}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-1">no mapa</p>
+        </div>
+        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2 py-2">
+          <p className="text-base font-bold text-emerald-700 dark:text-emerald-300 leading-none">
+            {withActiveInCity}
+          </p>
+          <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-1">
+            com ativos
+          </p>
+        </div>
+        <div className="rounded-lg bg-muted px-2 py-2">
+          <p className="text-base font-bold leading-none">{withoutActiveInCity}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">sem ativos</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex w-full h-[calc(100vh-7.5rem)] min-h-[480px] rounded-2xl overflow-hidden border border-border/80 bg-card shadow-inner shadow-black/5 dark:shadow-black/40">
+      {/* Painel lateral de filtros — não cobre o mapa */}
+      <aside className="hidden lg:flex w-[300px] xl:w-[320px] shrink-0 flex-col border-r bg-card">
+        <div className="p-4 border-b shrink-0">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Filter className="size-4 text-primary" />
+            Filtros do mapa
+          </h2>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+            {nameQuery.trim() ? `“${nameQuery.trim()}” · ` : ''}
+            {internLabel} · {selectedGroupLabel} · {selectedCity}
+            {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
+          </p>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="p-4">{filterPanel}</div>
+        </ScrollArea>
+      </aside>
+
+      <div className="relative flex-1 min-w-0 bg-muted">
+        {/* Mobile: filtros em Sheet (não overlay permanente) */}
+        <div className="absolute top-3 left-3 z-[1000] lg:hidden flex gap-2">
+          <Button className="shadow-lg" onClick={() => setFiltersOpen(true)}>
+            <Filter />
+            Filtros
+            <Badge variant="secondary" className="ml-1">
+              {visibleCompanies.length}
+            </Badge>
+          </Button>
+        </div>
+
+        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <SheetContent side="left" className="w-[min(100%,360px)] p-0 flex flex-col">
+            <SheetHeader className="p-4 border-b text-left">
+              <SheetTitle className="text-sm flex items-center gap-2">
+                <Filter className="size-4 text-primary" />
+                Filtros do mapa
+              </SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="flex-1">
+              <div className="p-4">{filterPanel}</div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+
+        <div className="absolute top-3 right-3 z-[1000] w-[min(100%-1.5rem,300px)] hidden sm:block max-h-[calc(100%-1.5rem)]">
+          {routeOpen ? (
+            <div className="relative max-h-full flex flex-col min-h-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-2 right-2 z-10 size-7 bg-card/80"
+                onClick={() => setRouteOpen(false)}
+              >
+                <X className="size-3.5" />
+              </Button>
+              <DayRoutePanel
+                schedules={schedules}
+                companies={companies}
+                userLocation={userLocation}
+                locationSource={locationSource}
+                onFocusCompany={onFocusCompany}
+              />
+            </div>
+          ) : (
+            <Button className="shadow-lg ml-auto flex" onClick={() => setRouteOpen(true)}>
+              Rota do dia
+            </Button>
+          )}
+        </div>
+
+        <div ref={mapContainerRef} className="w-full h-full z-10" />
+
+        <div className="absolute bottom-4 left-3 z-[1000] flex items-center gap-2 max-w-[calc(100%-1.5rem)] flex-wrap lg:left-4">
+          <Badge
+            variant="secondary"
+            className="shadow-md bg-card/95 backdrop-blur border px-3 py-1.5 truncate"
+          >
+            <MapPin className="size-3.5 text-primary mr-1 shrink-0" />
+            {selectedCity}
+            {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
+          </Badge>
+          <div className="flex items-center gap-1.5 rounded-full border bg-card/95 backdrop-blur px-2.5 py-1 shadow-md text-[10px] font-medium text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="size-2 rounded-full bg-emerald-500" /> ativos
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="size-2 rounded-full bg-rose-500" /> sem
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="size-2 rounded-full bg-amber-500" /> visita
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

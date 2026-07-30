@@ -273,7 +273,9 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
         company,
         minivagas.observacoesByCnpj,
         minivagas.hiringByCnpj,
-        minivagas.hiringByCnpjMonth
+        minivagas.hiringByCnpjMonth,
+        minivagas.reputationByCnpj,
+        minivagas.reputationByCnpjMonth
       );
     },
     [minivagas]

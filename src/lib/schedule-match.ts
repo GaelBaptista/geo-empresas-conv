@@ -74,6 +74,44 @@ export function isCompanyVisitScheduleTitle(title: string): boolean {
   );
 }
 
+/** Tem empresa selecionada no Estagius ou vinculada no mapa. */
+export function hasScheduleCompanySelected(schedule: ScheduleItem): boolean {
+  if (schedule.apiCompanyId != null) return true;
+  if (schedule.matchedCompanyId) return true;
+  if ((schedule.apiCompanyName || '').trim()) return true;
+  return false;
+}
+
+/** Reunião online / videochamada — não entra na agenda de visitas de campo. */
+export function isOnlineMeetingSchedule(schedule: ScheduleItem): boolean {
+  const text = [
+    schedule.title,
+    schedule.observations,
+    schedule.description,
+    schedule.type,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    /meet\.google\.com/.test(text) ||
+    /zoom\.us/.test(text) ||
+    /teams\.microsoft/.test(text) ||
+    /videochamada/.test(text) ||
+    /videoconfer/.test(text) ||
+    /reuni[aã]o online/.test(text) ||
+    (/link da video/.test(text) && /http/.test(text))
+  );
+}
+
+/** Itens que devem aparecer na tela de Agenda (empresa selecionada, sem reunião online). */
+export function isFieldAgendaSchedule(schedule: ScheduleItem): boolean {
+  if (!hasScheduleCompanySelected(schedule)) return false;
+  if (isOnlineMeetingSchedule(schedule)) return false;
+  return true;
+}
+
 type ScoredMatch = {
   company: Company;
   score: number;

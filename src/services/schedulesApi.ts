@@ -106,6 +106,7 @@ export function mapApiScheduleToItem(raw: ApiSchedule): ScheduleItem {
     id: String(raw.id),
     title,
     description: notes,
+    observations: notes,
     type,
     status,
     startsAt,

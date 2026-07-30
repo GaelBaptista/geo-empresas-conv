@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   FORTALEZA_CENTER,
+  readStoredUserLocation,
   setCachedUserLocation,
   type LatLng,
   type LocationSource,
@@ -22,15 +23,44 @@ type UseUserLocationOptions = {
   autoRequest?: boolean;
 };
 
+type InitialLocation = {
+  position: LatLng | null;
+  source: LocationSource | null;
+  status: UserLocationStatus;
+};
+
+function readInitialLocation(): InitialLocation {
+  const stored = readStoredUserLocation();
+  if (stored) {
+    setCachedUserLocation(stored.position, stored.source);
+    return {
+      position: stored.position,
+      source: stored.source,
+      status: 'ready',
+    };
+  }
+  return {
+    position: null,
+    source: null,
+    status: 'idle',
+  };
+}
+
 /**
  * Localização serve principalmente para detectar a CIDADE.
  * GPS → cidade mais próxima. Sem permissão → Fortaleza.
- * Não dispara sozinho: precisa do clique em "Permitir".
+ * Escolha fica salva no localStorage para não pedir de novo no reload.
  */
 export function useUserLocation(_options: UseUserLocationOptions = {}) {
-  const [position, setPosition] = useState<LatLng | null>(null);
-  const [source, setSource] = useState<LocationSource | null>(null);
-  const [status, setStatus] = useState<UserLocationStatus>('idle');
+  const initialRef = useRef<InitialLocation | null>(null);
+  if (initialRef.current == null) {
+    initialRef.current = readInitialLocation();
+  }
+  const initial = initialRef.current;
+
+  const [position, setPosition] = useState<LatLng | null>(initial.position);
+  const [source, setSource] = useState<LocationSource | null>(initial.source);
+  const [status, setStatus] = useState<UserLocationStatus>(initial.status);
   const [accuracyM, setAccuracyM] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const requestInFlightRef = useRef(false);

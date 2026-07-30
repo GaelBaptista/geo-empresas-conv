@@ -27,9 +27,7 @@ function readStoredTheme(): ThemeMode {
   } catch {
     /* ignore */
   }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
+  // Padrão inicial: sempre claro
   return 'light';
 }
 
