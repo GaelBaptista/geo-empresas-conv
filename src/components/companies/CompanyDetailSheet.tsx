@@ -174,21 +174,21 @@ export function CompanyDetailSheet({
                         <CompanyReputationCard reputation={minivagasExtras.reputation} />
                       )}
 
-                    <Card className="border-amber-200/70 bg-amber-50/50 dark:border-amber-800/40 dark:bg-amber-950/30">
+                    <Card className="border-border/80 bg-muted/40 dark:bg-muted/25 shadow-none">
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm flex items-center gap-2 text-amber-900 dark:text-amber-100">
-                          <StickyNote className="size-3.5" />
+                        <CardTitle className="text-sm flex items-center gap-2 text-foreground">
+                          <StickyNote className="size-3.5 text-primary" />
                           Observações Minivagas
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {minivagasExtras.observacoes && (
-                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">
+                          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
                             {minivagasExtras.observacoes}
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline" className="bg-card">
+                          <Badge variant="outline" className="bg-background">
                             {minivagasExtras.enviados} candidato(s)
                           </Badge>
                           <Badge
@@ -213,7 +213,10 @@ export function CompanyDetailSheet({
                             </Badge>
                           )}
                           {minivagasExtras.emFunil > 0 && (
-                            <Badge variant="outline">
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-100 dark:border-emerald-800"
+                            >
                               {minivagasExtras.emFunil} em entrevista
                             </Badge>
                           )}
