@@ -10,6 +10,7 @@ import {
   ChevronDown,
   MapPin,
   Search,
+  RefreshCw,
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -48,6 +49,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { formatSyncAgo } from '@/lib/format-relative';
 import {
   rankingsForPeriod,
   reputationCriteria,
@@ -136,6 +138,14 @@ export function HiringRankPanel({
   const [view, setView] = useState<RankView>('reputation');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const syncLabel = formatSyncAgo(bundle.totals.freezeLastSyncAt, nowTick);
 
   const { topRejecters, topHired, topNoShows, topReputation } = useMemo(
     () => rankingsForPeriod(bundle, period),
@@ -284,31 +294,51 @@ export function HiringRankPanel({
                 </CardDescription>
               </div>
 
-              <div className="inline-flex rounded-xl bg-muted p-1 shrink-0 self-start">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={period === 'all' ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'h-8 rounded-lg px-3',
-                    period === 'all' && 'bg-card shadow-sm hover:bg-card'
-                  )}
-                  onClick={() => setPeriod('all')}
-                >
-                  Geral
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={period === 'month' ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'h-8 rounded-lg px-3 capitalize',
-                    period === 'month' && 'bg-card shadow-sm hover:bg-card'
-                  )}
-                  onClick={() => setPeriod('month')}
-                >
-                  {monthLabel}
-                </Button>
+              <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 self-start sm:self-end font-medium text-muted-foreground"
+                    >
+                      <RefreshCw className="size-3" />
+                      {syncLabel}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-xs">
+                    Quando os dados do ranking foram atualizados pela última vez
+                    {bundle.totals.freezeLastSyncAt
+                      ? ` · ${new Date(bundle.totals.freezeLastSyncAt).toLocaleString('pt-BR')}`
+                      : ''}
+                  </TooltipContent>
+                </Tooltip>
+
+                <div className="inline-flex rounded-xl bg-muted p-1 self-start sm:self-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={period === 'all' ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'h-8 rounded-lg px-3',
+                      period === 'all' && 'bg-card shadow-sm hover:bg-card'
+                    )}
+                    onClick={() => setPeriod('all')}
+                  >
+                    Geral
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={period === 'month' ? 'secondary' : 'ghost'}
+                    className={cn(
+                      'h-8 rounded-lg px-3 capitalize',
+                      period === 'month' && 'bg-card shadow-sm hover:bg-card'
+                    )}
+                    onClick={() => setPeriod('month')}
+                  >
+                    {monthLabel}
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>

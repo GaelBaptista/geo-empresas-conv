@@ -1190,7 +1190,8 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
       apiTotalContratados: contratadosRes.reportedTotal,
       apiTotalNaoCompareceu: naoCompareceuRes.reportedTotal,
       freezeEntryCount: freezeEntries.length,
-      freezeLastSyncAt: freezePayload?.lastSyncAt || null,
+      freezeLastSyncAt:
+        freezePayload?.lastSyncAt || freezePayload?.updatedAt || new Date().toISOString(),
     },
   };
 }

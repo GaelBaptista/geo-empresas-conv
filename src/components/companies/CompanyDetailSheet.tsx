@@ -1,4 +1,5 @@
-import { MapPin, Phone, Mail, User, ClipboardList, Calendar, ExternalLink, Navigation, StickyNote, ThumbsDown, Building2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { MapPin, Phone, Mail, User, ClipboardList, Calendar, ExternalLink, Navigation, StickyNote, ThumbsDown, Building2, FileDown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -6,6 +7,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -14,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/companies/StatusBadge';
 import { CompanyReputationCard } from '@/components/companies/CompanyReputationCard';
 import { getCompanyDisplayName } from '@/lib/company';
+import { exportCompanyDetailPdf } from '@/lib/company-pdf';
 import {
   formatScheduleDate,
   googleMapsCompanyUrl,
@@ -37,11 +40,36 @@ export function CompanyDetailSheet({
   onClose,
   onFocusOnMap,
 }: CompanyDetailSheetProps) {
+  const [exportStatus, setExportStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
+    'idle'
+  );
+
+  useEffect(() => {
+    setExportStatus('idle');
+  }, [company?.id]);
+
+  useEffect(() => {
+    if (exportStatus !== 'success' && exportStatus !== 'error') return;
+    const t = window.setTimeout(() => setExportStatus('idle'), 4500);
+    return () => window.clearTimeout(t);
+  }, [exportStatus]);
+
   const companySchedules = company
     ? schedules
         .filter((s) => s.isVisit && s.matchedCompanyId === company.id)
         .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
     : [];
+
+  const handleExportPdf = async () => {
+    if (!company || exportStatus === 'loading') return;
+    setExportStatus('loading');
+    try {
+      await exportCompanyDetailPdf(company, minivagasExtras);
+      setExportStatus('success');
+    } catch {
+      setExportStatus('error');
+    }
+  };
 
   return (
     <Sheet open={!!company} onOpenChange={(open) => !open && onClose()}>
@@ -73,26 +101,62 @@ export function CompanyDetailSheet({
               </div>
             </SheetHeader>
 
-            <div className="p-4 bg-muted/50 border-b flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => {
-                  onFocusOnMap(company);
-                  onClose();
-                }}
-              >
-                <MapPin />
-                Ver no mapa
-              </Button>
-              <Button variant="outline" size="sm" className="flex-1" asChild>
-                <a href={googleMapsCompanyUrl(company)} target="_blank" rel="noreferrer">
-                  <Navigation />
-                  Google Maps
-                  <ExternalLink className="size-3 opacity-70" />
-                </a>
-              </Button>
+            <div className="p-4 bg-muted/50 border-b space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 min-w-[8rem]"
+                  onClick={() => {
+                    onFocusOnMap(company);
+                    onClose();
+                  }}
+                >
+                  <MapPin />
+                  Ver no mapa
+                </Button>
+                <Button variant="outline" size="sm" className="flex-1 min-w-[8rem]" asChild>
+                  <a href={googleMapsCompanyUrl(company)} target="_blank" rel="noreferrer">
+                    <Navigation />
+                    Google Maps
+                    <ExternalLink className="size-3 opacity-70" />
+                  </a>
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1 min-w-[8rem]"
+                  disabled={exportStatus === 'loading'}
+                  onClick={() => void handleExportPdf()}
+                >
+                  {exportStatus === 'loading' ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <FileDown />
+                  )}
+                  {exportStatus === 'loading' ? 'Gerando…' : 'Exportar PDF'}
+                </Button>
+              </div>
+
+              {exportStatus === 'success' && (
+                <Alert variant="success">
+                  <CheckCircle2 />
+                  <AlertTitle>PDF exportado</AlertTitle>
+                  <AlertDescription>
+                    O download da ficha foi iniciado com sucesso.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {exportStatus === 'error' && (
+                <Alert variant="warning">
+                  <AlertCircle />
+                  <AlertTitle>Falha na exportação</AlertTitle>
+                  <AlertDescription>
+                    Não foi possível gerar o PDF. Tente novamente em instantes.
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             <ScrollArea className="flex-1 min-h-0 min-w-0">

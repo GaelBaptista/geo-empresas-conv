@@ -57,7 +57,7 @@ export function AppSidebar({
             <p className="font-display text-base font-semibold leading-tight tracking-tight">
               Geolocalização
             </p>
-            <p className="text-[11px] text-muted-foreground truncate">Empresas Conveniadas</p>
+            <p className="text-[11px] text-muted-foreground truncate">de empresas</p>
           </div>
         </div>
       </SidebarHeader>

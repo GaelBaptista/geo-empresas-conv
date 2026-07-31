@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -16,8 +15,10 @@ import {
   filterByCity,
   filterByGroup,
   filterByInterns,
+  filterByState,
   getCompanyDisplayName,
   listCities,
+  listStates,
   normalizeCity,
   pickDefaultCity,
   type InternFilter,
@@ -242,6 +243,7 @@ export function MapView({
 
   const [internFilter, setInternFilter] = useState<InternFilter>('with_active');
   const [selectedGroupId, setSelectedGroupId] = useState<number | 'ALL'>('ALL');
+  const [selectedState, setSelectedState] = useState<string | 'ALL'>('ALL');
   const [nameQuery, setNameQuery] = useState('');
   const deferredNameQuery = useDeferredValue(nameQuery);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -268,7 +270,20 @@ export function MapView({
     });
   }, [filteredByInterns, deferredNameQuery]);
 
-  const cities = useMemo(() => listCities(filteredByName), [filteredByName]);
+  const states = useMemo(() => listStates(filteredByName), [filteredByName]);
+
+  useEffect(() => {
+    if (selectedState === 'ALL') return;
+    const stillExists = states.some((s) => s === selectedState);
+    if (!stillExists) setSelectedState('ALL');
+  }, [states, selectedState]);
+
+  const filteredByState = useMemo(
+    () => filterByState(filteredByName, selectedState),
+    [filteredByName, selectedState]
+  );
+
+  const cities = useMemo(() => listCities(filteredByState), [filteredByState]);
   const [selectedCity, setSelectedCity] = useState(DEFAULT_MAP_CITY);
   const didInitCityRef = useRef(false);
   selectedCityRef.current = selectedCity;
@@ -301,11 +316,12 @@ export function MapView({
     setNameQuery('');
     setInternFilter('all');
     setSelectedGroupId('ALL');
+    setSelectedState('ALL');
   }, [focusMapRequest, companies, selectedCity]);
 
   const companiesInCity = useMemo(
-    () => filterByCity(filteredByName, selectedCity),
-    [filteredByName, selectedCity]
+    () => filterByCity(filteredByState, selectedCity),
+    [filteredByState, selectedCity]
   );
 
   const neighborhoodsInCity = useMemo(() => {
@@ -326,15 +342,17 @@ export function MapView({
 
   const withActiveInCity = useMemo(
     () =>
-      filterByCity(filteredByGroup, selectedCity).filter((c) => (c.activeTrainees ?? 0) > 0)
-        .length,
-    [filteredByGroup, selectedCity]
+      filterByCity(filterByState(filteredByGroup, selectedState), selectedCity).filter(
+        (c) => (c.activeTrainees ?? 0) > 0
+      ).length,
+    [filteredByGroup, selectedState, selectedCity]
   );
   const withoutActiveInCity = useMemo(
     () =>
-      filterByCity(filteredByGroup, selectedCity).filter((c) => (c.activeTrainees ?? 0) === 0)
-        .length,
-    [filteredByGroup, selectedCity]
+      filterByCity(filterByState(filteredByGroup, selectedState), selectedCity).filter(
+        (c) => (c.activeTrainees ?? 0) === 0
+      ).length,
+    [filteredByGroup, selectedState, selectedCity]
   );
 
   const groupOptions = useMemo(
@@ -358,14 +376,32 @@ export function MapView({
       ? 'Todos os grupos'
       : groups.find((g) => g.id === selectedGroupId)?.label || 'Grupo';
 
+  const selectedStateLabel = selectedState === 'ALL' ? 'Todos os estados' : selectedState;
+
+  const stateOptions = useMemo(
+    () => [
+      {
+        value: 'ALL',
+        label: 'Todos os estados',
+        hint: String(filteredByName.length),
+      },
+      ...states.map((state) => ({
+        value: state,
+        label: state,
+        hint: String(filterByState(filteredByName, state).length),
+      })),
+    ],
+    [states, filteredByName]
+  );
+
   const cityOptions = useMemo(
     () =>
       cities.map((city) => ({
         value: city,
         label: city,
-        hint: String(filterByCity(filteredByName, city).length),
+        hint: String(filterByCity(filteredByState, city).length),
       })),
-    [cities, filteredByName]
+    [cities, filteredByState]
   );
 
   const neighborhoodOptions = useMemo(
@@ -490,7 +526,7 @@ export function MapView({
     if (didAutoCityFromGpsRef.current) return;
     didAutoCityFromGpsRef.current = true;
 
-    const city = resolveMapCityForLocation(filteredByName, userLocation, locationSource);
+    const city = resolveMapCityForLocation(filteredByState, userLocation, locationSource);
     if (normalizeCity(city) !== normalizeCity(selectedCity)) {
       setSelectedCity(city);
       onSelectNeighborhood('ALL');
@@ -710,9 +746,11 @@ export function MapView({
   }, [focusMapRequest, companies, visibleCompanies, onFocusConsumed]);
 
   const filterPanel = (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Sua localização</Label>
+    <div className="space-y-5">
+      <section className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-2">
+        <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Sua localização
+        </Label>
         <Button
           type="button"
           variant={usingGps ? 'secondary' : 'default'}
@@ -742,16 +780,16 @@ export function MapView({
         {locationError && !usingGps && (
           <p className="text-[11px] text-muted-foreground">{locationError}</p>
         )}
-      </div>
+      </section>
 
-      <Separator />
-
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Buscar empresa</Label>
+      <section className="space-y-2">
+        <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Buscar empresa
+        </Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            className="pl-9 pr-9"
+            className="pl-9 pr-9 bg-background"
             placeholder="Nome fantasia ou razão social..."
             value={nameQuery}
             onChange={(e) => setNameQuery(e.target.value)}
@@ -767,11 +805,13 @@ export function MapView({
             </button>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Estagiários</Label>
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+      <section className="space-y-2">
+        <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Estagiários
+        </Label>
+        <div className="grid grid-cols-3 gap-1 rounded-xl border border-border/70 bg-muted/40 p-1">
           {(
             [
               { id: 'with_active', label: 'Com', icon: Users },
@@ -790,10 +830,10 @@ export function MapView({
                   onSelectNeighborhood('ALL');
                 }}
                 className={cn(
-                  'flex flex-col items-center gap-1 rounded-md px-2 py-2 text-[11px] font-semibold transition cursor-pointer',
+                  'flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-[11px] font-semibold transition cursor-pointer',
                   active
-                    ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-card text-foreground shadow-sm border border-border/60'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background/60'
                 )}
               >
                 <Icon className="size-3.5" />
@@ -802,57 +842,75 @@ export function MapView({
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Grupo</Label>
-        <SearchableSelect
-          value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
-          options={groupOptions}
-          placeholder="Escolher grupo"
-          searchPlaceholder="Buscar grupo..."
-          onChange={(value) => {
-            setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
-            onSelectNeighborhood('ALL');
-          }}
-        />
-      </div>
+      <section className="rounded-xl border border-border/70 bg-background p-3 space-y-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Região e grupo
+        </p>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Cidade</Label>
-        <SearchableSelect
-          value={selectedCity}
-          options={cityOptions}
-          placeholder="Escolher cidade"
-          searchPlaceholder="Buscar cidade..."
-          onChange={(city) => {
-            setSelectedCity(city);
-            onSelectNeighborhood('ALL');
-          }}
-        />
-      </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Grupo</Label>
+          <SearchableSelect
+            value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
+            options={groupOptions}
+            placeholder="Escolher grupo"
+            searchPlaceholder="Buscar grupo..."
+            onChange={(value) => {
+              setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
+              onSelectNeighborhood('ALL');
+            }}
+          />
+        </div>
 
-      <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">Bairro</Label>
-        <SearchableSelect
-          value={selectedNeighborhoodId}
-          options={neighborhoodOptions}
-          placeholder="Escolher bairro"
-          searchPlaceholder="Buscar bairro..."
-          onChange={onSelectNeighborhood}
-        />
-      </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Estado</Label>
+          <SearchableSelect
+            value={selectedState}
+            options={stateOptions}
+            placeholder="Escolher estado"
+            searchPlaceholder="Buscar estado..."
+            onChange={(value) => {
+              setSelectedState(value === 'ALL' ? 'ALL' : value);
+              onSelectNeighborhood('ALL');
+            }}
+          />
+        </div>
 
-      <Separator />
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Cidade</Label>
+          <SearchableSelect
+            value={selectedCity}
+            options={cityOptions}
+            placeholder="Escolher cidade"
+            searchPlaceholder="Buscar cidade..."
+            onChange={(city) => {
+              setSelectedCity(city);
+              onSelectNeighborhood('ALL');
+            }}
+          />
+        </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-lg bg-muted/60 px-2 py-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Bairro</Label>
+          <SearchableSelect
+            value={selectedNeighborhoodId}
+            options={neighborhoodOptions}
+            placeholder="Escolher bairro"
+            searchPlaceholder="Buscar bairro..."
+            onChange={onSelectNeighborhood}
+          />
+        </div>
+      </section>
+
+      <section className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2.5">
           <p className="text-base font-bold text-foreground leading-none">
             {visibleCompanies.length}
           </p>
           <p className="text-[10px] text-muted-foreground mt-1">no mapa</p>
         </div>
-        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2 py-2">
+        <div className="rounded-xl border border-emerald-200/70 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-800/40 px-2 py-2.5">
           <p className="text-base font-bold text-emerald-700 dark:text-emerald-300 leading-none">
             {withActiveInCity}
           </p>
@@ -860,11 +918,11 @@ export function MapView({
             com ativos
           </p>
         </div>
-        <div className="rounded-lg bg-muted px-2 py-2">
+        <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2.5">
           <p className="text-base font-bold leading-none">{withoutActiveInCity}</p>
           <p className="text-[10px] text-muted-foreground mt-1">sem ativos</p>
         </div>
-      </div>
+      </section>
     </div>
   );
 
@@ -879,7 +937,7 @@ export function MapView({
           </h2>
           <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
             {nameQuery.trim() ? `“${nameQuery.trim()}” · ` : ''}
-            {internLabel} · {selectedGroupLabel} · {selectedCity}
+            {internLabel} · {selectedGroupLabel} · {selectedStateLabel} · {selectedCity}
             {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
           </p>
         </div>
@@ -914,13 +972,13 @@ export function MapView({
           </SheetContent>
         </Sheet>
 
-        <div className="absolute top-3 right-3 z-[1000] w-[min(100%-1.5rem,300px)] hidden sm:block max-h-[calc(100%-1.5rem)]">
+        <div className="absolute top-3 right-3 z-[1000] w-[min(100%-1.5rem,340px)] hidden sm:block max-h-[calc(100%-1.5rem)]">
           {routeOpen ? (
             <div className="relative max-h-full flex flex-col min-h-0">
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-2 right-2 z-10 size-7 bg-card/80"
+                className="absolute top-2.5 right-2.5 z-10 size-7 bg-card/90 hover:bg-muted"
                 onClick={() => setRouteOpen(false)}
               >
                 <X className="size-3.5" />

@@ -70,6 +70,60 @@ export function filterByCity(companies: Company[], city: string | 'ALL'): Compan
   return companies.filter((c) => normalizeCity(getCompanyCity(c)) === key);
 }
 
+export function normalizeState(state: string | null | undefined): string {
+  return (state || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+}
+
+export function getCompanyState(company: Pick<Company, 'state' | 'city'>): string {
+  const raw = normalizeState(company.state);
+  const aliases: Record<string, string> = {
+    CEARA: 'CE',
+    PERNAMBUCO: 'PE',
+    BAHIA: 'BA',
+    PARAIBA: 'PB',
+    'RIO GRANDE DO NORTE': 'RN',
+    PIAUI: 'PI',
+    MARANHAO: 'MA',
+    ALAGOAS: 'AL',
+    SERGIPE: 'SE',
+  };
+  if (raw) {
+    if (aliases[raw]) return aliases[raw];
+    if (raw.length === 2) return raw;
+    return raw;
+  }
+  const city = normalizeCity(company.city);
+  if (
+    city.includes('fortaleza') ||
+    city.includes('caucaia') ||
+    city.includes('maracanau') ||
+    city.includes('pacajus')
+  ) {
+    return 'CE';
+  }
+  return '—';
+}
+
+/** Estados distintos presentes nas empresas. */
+export function listStates(companies: Company[]): string[] {
+  const set = new Set<string>();
+  companies.forEach((c) => {
+    const st = getCompanyState(c);
+    if (st && st !== '—') set.add(st);
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+export function filterByState(companies: Company[], state: string | 'ALL'): Company[] {
+  if (state === 'ALL') return companies;
+  const key = normalizeState(state);
+  return companies.filter((c) => normalizeState(getCompanyState(c)) === key);
+}
+
 export function cityCenter(companies: Company[]): [number, number] {
   if (companies.length === 0) return [-3.7327, -38.527];
 

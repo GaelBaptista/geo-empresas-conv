@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppData } from '@/hooks/useAppData';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -12,6 +12,7 @@ import { MapView } from '@/components/map/MapView';
 import { CompanyDetailSheet } from '@/components/companies/CompanyDetailSheet';
 import { SchedulesAgenda } from '@/components/visits/SchedulesAgenda';
 import { HiringRankPanel } from '@/components/dashboard/HiringRankPanel';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -154,6 +155,27 @@ export default function App() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {!isLoadingCompanies && upcomingVisitCount > 0 && (
+          <Alert variant="info" className="mb-4">
+            <CalendarDays />
+            <AlertTitle>Agenda de hoje</AlertTitle>
+            <AlertDescription className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-1">
+              <p>
+                Há{' '}
+                <strong>
+                  {upcomingVisitCount} visita{upcomingVisitCount === 1 ? '' : 's'}
+                </strong>{' '}
+                programadas para hoje.
+              </p>
+              <div className="flex flex-wrap gap-2 shrink-0">
+                <Button size="sm" onClick={() => setActiveView('visits')}>
+                  Ver agenda
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
         )}
 
         <div className={cn(activeView !== 'map' && 'hidden')} aria-hidden={activeView !== 'map'}>
