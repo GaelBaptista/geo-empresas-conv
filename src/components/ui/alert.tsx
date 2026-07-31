@@ -12,7 +12,7 @@ const alertVariants = cva(
         success:
           'border-emerald-200/80 bg-emerald-50/80 text-emerald-950 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-50 [&>svg]:text-emerald-600',
         warning:
-          'border-amber-200/80 bg-amber-50/80 text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-50 [&>svg]:text-amber-600',
+          'border-orange-200/80 bg-orange-50 text-orange-950 dark:border-orange-800/50 dark:bg-orange-950/40 dark:text-orange-50 [&>svg]:text-orange-600',
       },
     },
     defaultVariants: {

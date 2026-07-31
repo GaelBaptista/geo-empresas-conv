@@ -73,7 +73,7 @@ export function DayRoutePanel({
             <Button variant="outline" size="sm" asChild>
               <a href={mapsUrl} target="_blank" rel="noreferrer">
                 <Navigation />
-                Maps
+                Google Maps
                 <ExternalLink className="size-3 opacity-70" />
               </a>
             </Button>

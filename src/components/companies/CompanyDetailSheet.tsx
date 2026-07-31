@@ -207,7 +207,7 @@ export function CompanyDetailSheet({
                           {minivagasExtras.naoCompareceu > 0 && (
                             <Badge
                               variant="outline"
-                              className="bg-amber-50 text-amber-900 border-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:border-amber-800"
+                            className="bg-orange-50 text-orange-900 border-orange-200 dark:bg-orange-950/40 dark:text-orange-100 dark:border-orange-800"
                             >
                               {minivagasExtras.naoCompareceu} faltas
                             </Badge>
@@ -252,8 +252,8 @@ export function CompanyDetailSheet({
                           key={item.id}
                           className={`rounded-xl border p-4 space-y-2 ${
                             isUpcomingSchedule(item)
-                              ? 'bg-amber-50/70 border-amber-200/70 dark:bg-amber-950/30 dark:border-amber-800/40'
-                              : 'bg-card'
+                              ? 'bg-card border-border border-l-[3px] border-l-primary'
+                              : 'bg-card border-border'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-2">

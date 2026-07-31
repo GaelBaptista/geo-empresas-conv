@@ -713,20 +713,31 @@ function GroupUnitsMenu({
           : 'casos';
 
   return (
-    <div className="min-w-0 space-y-0.5">
+    <div className="min-w-0 space-y-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             className={cn(
-              'group inline-flex max-w-full sm:max-w-lg lg:max-w-xl items-center gap-1.5 rounded-lg px-2 py-1.5 text-left',
-              'font-semibold leading-snug transition-colors',
-              'hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'data-[state=open]:bg-accent'
+              'group flex w-full max-w-full sm:max-w-lg lg:max-w-xl items-center gap-2 rounded-xl border border-border/80 bg-card px-2.5 py-2 text-left',
+              'shadow-sm transition-colors cursor-pointer',
+              'hover:border-primary/45 hover:bg-accent/50 hover:shadow-md',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'data-[state=open]:border-primary/50 data-[state=open]:bg-accent/60'
             )}
           >
-            <span className="truncate">{name}</span>
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            <span className="min-w-0 flex-1 truncate font-semibold leading-snug">{name}</span>
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-muted/80 px-2 py-1',
+                'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
+                'transition-colors group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary',
+                'group-data-[state=open]:border-primary/30 group-data-[state=open]:bg-primary/10 group-data-[state=open]:text-primary'
+              )}
+            >
+              {memberCount > 1 ? 'Ver CNPJs' : 'Detalhes'}
+              <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+            </span>
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
@@ -741,7 +752,7 @@ function GroupUnitsMenu({
                 : 'Unidade deste grupo'}
             </p>
             <p className="text-xs text-muted-foreground">
-              Números abaixo são só daquele CNPJ. Clique para abrir a ficha.
+              Números abaixo são só daquele CNPJ. Clique para abrir os detalhes.
             </p>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -816,6 +827,11 @@ function GroupUnitsMenu({
                       Sem resultado neste período
                     </span>
                   )}
+                  {canOpen ? (
+                    <span className="text-[10px] font-medium text-primary">
+                      Abrir detalhes →
+                    </span>
+                  ) : null}
                 </span>
               </DropdownMenuItem>
             );
@@ -828,7 +844,7 @@ function GroupUnitsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
       {subtitle ? (
-        <p className="text-xs text-muted-foreground pl-2">{subtitle}</p>
+        <p className="text-[11px] text-muted-foreground pl-1">{subtitle}</p>
       ) : null}
     </div>
   );
@@ -877,8 +893,8 @@ function ReputationTable({
           const noShowPct = Math.round((r.noShowRate ?? 0) * 100);
           const subtitle =
             row.memberCount > 1
-              ? `Grupo com ${row.memberCount} CNPJs · totais somados · clique para ver cada um`
-              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'}`;
+              ? `${row.memberCount} CNPJs somados · toque em Ver CNPJs`
+              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'} · toque em Detalhes`;
 
           return (
             <TableRow key={row.groupKey}>
@@ -1014,8 +1030,8 @@ function VolumeTable({
           const barPct = Math.round((row.count / maxValue) * 100);
           const subtitle =
             row.memberCount > 1
-              ? `Grupo com ${row.memberCount} CNPJs · totais somados · clique para ver cada um`
-              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'}`;
+              ? `${row.memberCount} CNPJs somados · toque em Ver CNPJs`
+              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'} · toque em Detalhes`;
 
           return (
             <TableRow key={row.groupKey}>

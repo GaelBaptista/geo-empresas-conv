@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
-import { MapPin, Users, UserX, Filter, X, Search, LocateFixed, Loader2 } from 'lucide-react';
+import { MapPin, Users, UserX, Filter, X, Search, LocateFixed, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -183,13 +183,16 @@ function buildCompanyPopupHtml(
         }
       </div>
       <div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
-        <button type="button" data-action="details" style="flex:1;background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">
-          Ficha
+        <button type="button" data-action="details" style="flex:1;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">
+          Detalhes
         </button>
-        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noreferrer" style="flex:1;background:#fff;color:#0f172a;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;">
-          Maps
+        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noreferrer" style="flex:1;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;">
+          Google Maps
         </a>
       </div>
+      <p style="margin:8px 0 0;font-size:10px;line-height:1.35;color:#64748b;">
+        O pin no mapa é aproximado. Use o Google Maps para a localização exata pelo endereço.
+      </p>
     </div>
   `;
 }
@@ -939,25 +942,34 @@ export function MapView({
 
         <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-        <div className="absolute bottom-4 left-3 z-[1000] flex items-center gap-2 max-w-[calc(100%-1.5rem)] flex-wrap lg:left-4">
-          <Badge
-            variant="secondary"
-            className="shadow-md bg-card/95 backdrop-blur border px-3 py-1.5 truncate"
-          >
-            <MapPin className="size-3.5 text-primary mr-1 shrink-0" />
-            {selectedCity}
-            {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
-          </Badge>
-          <div className="flex items-center gap-1.5 rounded-full border bg-card/95 backdrop-blur px-2.5 py-1 shadow-md text-[10px] font-medium text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <span className="size-2 rounded-full bg-emerald-500" /> ativos
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="size-2 rounded-full bg-rose-500" /> sem
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="size-2 rounded-full bg-amber-500" /> visita
-            </span>
+        <div className="absolute bottom-4 left-3 right-3 z-[1000] flex flex-col gap-2 max-w-[calc(100%-1.5rem)] sm:max-w-md lg:left-4">
+          <div className="flex items-start gap-2 rounded-xl border bg-card/95 backdrop-blur px-3 py-2 shadow-md text-[11px] leading-snug text-muted-foreground">
+            <Info className="size-3.5 text-primary shrink-0 mt-0.5" />
+            <p>
+              Os pins são <span className="font-medium text-foreground">aproximados</span> (CEP/bairro).
+              Para o endereço certo, abra o <span className="font-medium text-foreground">Google Maps</span> no popup.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge
+              variant="secondary"
+              className="shadow-md bg-card/95 backdrop-blur border px-3 py-1.5 truncate"
+            >
+              <MapPin className="size-3.5 text-primary mr-1 shrink-0" />
+              {selectedCity}
+              {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
+            </Badge>
+            <div className="flex items-center gap-1.5 rounded-full border bg-card/95 backdrop-blur px-2.5 py-1 shadow-md text-[10px] font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-emerald-500" /> ativos
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-rose-500" /> sem
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-amber-500" /> visita
+              </span>
+            </div>
           </div>
         </div>
       </div>

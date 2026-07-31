@@ -76,18 +76,18 @@
   --color-rose-900: oklch(0.32 0.1 15);
   --color-rose-950: oklch(0.22 0.06 15);
 
-  /* Âmbar — faltas / aviso */
-  --color-amber-50: oklch(0.98 0.02 90);
-  --color-amber-100: oklch(0.95 0.04 88);
-  --color-amber-200: oklch(0.90 0.07 85);
-  --color-amber-300: oklch(0.84 0.11 80);
-  --color-amber-400: oklch(0.78 0.13 75);
-  --color-amber-500: oklch(0.72 0.14 70);
-  --color-amber-600: oklch(0.62 0.13 65);
-  --color-amber-700: oklch(0.52 0.11 60);
-  --color-amber-800: oklch(0.44 0.09 58);
-  --color-amber-900: oklch(0.37 0.07 55);
-  --color-amber-950: oklch(0.25 0.04 50);
+  /* Âmbar — faltas / aviso (quente real; sem virar ciano no tema teal) */
+  --color-amber-50: oklch(0.985 0.02 85);
+  --color-amber-100: oklch(0.96 0.04 80);
+  --color-amber-200: oklch(0.91 0.08 78);
+  --color-amber-300: oklch(0.85 0.12 75);
+  --color-amber-400: oklch(0.78 0.14 72);
+  --color-amber-500: oklch(0.72 0.15 70);
+  --color-amber-600: oklch(0.62 0.14 65);
+  --color-amber-700: oklch(0.52 0.12 60);
+  --color-amber-800: oklch(0.44 0.1 55);
+  --color-amber-900: oklch(0.38 0.08 50);
+  --color-amber-950: oklch(0.26 0.05 48);
 
   /* Verde — sucesso / Excelente */
   --color-emerald-50: oklch(0.97 0.02 155);

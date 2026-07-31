@@ -127,9 +127,9 @@ export default function App() {
         )}
 
         {companiesError && (
-          <Card className="mb-4 border-amber-200/80 bg-amber-50/80 dark:border-amber-800/50 dark:bg-amber-950/40">
+          <Card className="mb-4 border-orange-200/80 bg-orange-50 dark:border-orange-800/50 dark:bg-orange-950/40">
             <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
-              <div className="flex items-start gap-2 flex-1 text-amber-900 dark:text-amber-100">
+              <div className="flex items-start gap-2 flex-1 text-orange-950 dark:text-orange-100">
                 <AlertCircle className="size-4 mt-0.5 shrink-0" />
                 <span>{companiesError}</span>
               </div>
@@ -200,8 +200,8 @@ export default function App() {
         {activeView === 'ranking' && (
           <div className="w-full max-w-none space-y-4">
             {minivagasError && (
-              <Card className="border-amber-200 bg-amber-50/70">
-                <CardContent className="p-3 text-sm text-amber-900">{minivagasError}</CardContent>
+              <Card className="border-orange-200 bg-orange-50 dark:border-orange-800/50 dark:bg-orange-950/40">
+                <CardContent className="p-3 text-sm text-orange-950 dark:text-orange-100">{minivagasError}</CardContent>
               </Card>
             )}
             {!minivagas && !minivagasError && (
