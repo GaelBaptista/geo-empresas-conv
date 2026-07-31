@@ -276,12 +276,12 @@ export function CompanyDetailSheet({
                           )}
                           {(item.observations || item.description) &&
                             (item.observations || item.description) !== item.title && (
-                              <div className="rounded-lg border border-amber-200/70 bg-amber-50/70 dark:border-amber-800/40 dark:bg-amber-950/30 p-2.5 space-y-1">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200 flex items-center gap-1">
-                                  <StickyNote className="size-3" />
+                              <div className="rounded-lg border border-border/80 bg-muted/40 dark:bg-muted/25 p-2.5 space-y-1">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                                  <StickyNote className="size-3 text-primary" />
                                   Observações da agenda
                                 </p>
-                                <p className="text-xs text-amber-950 dark:text-amber-50 leading-relaxed whitespace-pre-wrap">
+                                <p className="text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap">
                                   {item.observations || item.description}
                                 </p>
                               </div>

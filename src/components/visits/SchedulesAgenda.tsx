@@ -419,12 +419,12 @@ function ScheduleCard({
       </div>
 
       {observations && observations !== item.title && (
-        <div className="rounded-xl border border-amber-200/70 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/30 p-3 space-y-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800/80 dark:text-amber-200/80 flex items-center gap-1.5">
-            <StickyNote className="size-3.5" />
+        <div className="rounded-xl border border-border/80 bg-muted/40 dark:bg-muted/25 p-3 space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <StickyNote className="size-3.5 text-primary" />
             Observações
           </p>
-          <p className="text-sm text-amber-950 dark:text-amber-50 leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
             {observations}
           </p>
         </div>

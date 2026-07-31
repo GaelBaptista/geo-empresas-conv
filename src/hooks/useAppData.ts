@@ -4,6 +4,7 @@ import { clearLegacyGeocodeCaches } from '@/lib/geocode';
 import {
   applyManualMatches,
   companyIdsWithUpcomingVisits,
+  getVisitSchedulesInWindow,
   matchSchedulesToCompanies,
   nextVisitForCompany,
 } from '@/lib/schedule-match';
@@ -78,10 +79,9 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
 
   const upcomingVisitCount = useMemo(
     () =>
-      matchedSchedules.filter(
-        (s) => s.isVisit && s.matchedCompanyId && companiesWithVisitIds.has(s.matchedCompanyId)
-      ).length,
-    [matchedSchedules, companiesWithVisitIds]
+      getVisitSchedulesInWindow(matchedSchedules, 'today').filter((s) => Boolean(s.matchedCompanyId))
+        .length,
+    [matchedSchedules]
   );
 
   const loadCompanies = useCallback(async () => {
