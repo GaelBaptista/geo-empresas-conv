@@ -14,6 +14,7 @@ import { SchedulesAgenda } from '@/components/visits/SchedulesAgenda';
 import { HiringRankPanel } from '@/components/dashboard/HiringRankPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
 export default function App() {
   const { user, isAuthenticated, isSigningIn, authError, signIn, signOut } = useAuth();
@@ -155,8 +156,9 @@ export default function App() {
           </Card>
         )}
 
-        {activeView === 'map' && (
+        <div className={cn(activeView !== 'map' && 'hidden')} aria-hidden={activeView !== 'map'}>
           <MapView
+            isActive={activeView === 'map'}
             companies={companies}
             neighborhoods={neighborhoods}
             groups={groups}
@@ -176,7 +178,7 @@ export default function App() {
             locationError={locationError}
             onRequestLocation={requestLocation}
           />
-        )}
+        </div>
 
         {activeView === 'visits' && (
           <SchedulesAgenda
@@ -196,7 +198,7 @@ export default function App() {
         )}
 
         {activeView === 'ranking' && (
-          <div className="space-y-4 max-w-5xl">
+          <div className="w-full max-w-none space-y-4">
             {minivagasError && (
               <Card className="border-amber-200 bg-amber-50/70">
                 <CardContent className="p-3 text-sm text-amber-900">{minivagasError}</CardContent>

@@ -48,7 +48,7 @@ export function CompanyDetailSheet({
       <SheetContent className="p-0 flex flex-col gap-0 overflow-hidden w-full sm:max-w-xl md:max-w-2xl max-w-[100vw]">
         {company && (
           <>
-            <SheetHeader className="p-5 sm:p-6 bg-gradient-to-br from-primary to-sky-800 dark:from-sky-950 dark:to-blue-950 text-primary-foreground space-y-0 text-left shrink-0">
+            <SheetHeader className="p-5 sm:p-6 bg-gradient-to-br from-primary to-teal-800 dark:from-teal-950 dark:to-cyan-950 text-primary-foreground space-y-0 text-left shrink-0">
               <div className="flex items-start gap-3 sm:gap-4 pr-8 min-w-0">
                 <div className="size-14 sm:size-16 rounded-2xl bg-white/10 border-2 border-white/20 shadow-md shrink-0 flex items-center justify-center">
                   <Building2 className="size-7 text-white/90" />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import { MapPin, Users, UserX, Filter, X, Search, LocateFixed, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -54,6 +54,8 @@ interface MapViewProps {
   locationRequesting?: boolean;
   locationError?: string | null;
   onRequestLocation?: () => void;
+  /** Quando false, o mapa fica oculto mas montado (evita remount caro). */
+  isActive?: boolean;
 }
 
 function escapeHtml(value: string): string {
@@ -62,6 +64,134 @@ function escapeHtml(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+type PinKind = 'visit' | 'active' | 'inactive';
+
+function pinKind(hasVisit: boolean, hasActive: boolean): PinKind {
+  if (hasVisit) return 'visit';
+  if (hasActive) return 'active';
+  return 'inactive';
+}
+
+const PIN_COLORS: Record<PinKind, { pin: string; soft: string; labelBg: string }> = {
+  visit: { pin: '#d97706', soft: '#fffbeb', labelBg: '#fffbeb' },
+  active: { pin: '#059669', soft: '#ecfdf5', labelBg: '#ffffff' },
+  inactive: { pin: '#dc2626', soft: '#fef2f2', labelBg: '#fef2f2' },
+};
+
+/** Reusa DivIcons iguais (mesmo estado + label) em vez de recriar HTML a cada sync. */
+const pinIconCache = new Map<string, L.DivIcon>();
+
+function getCompanyPinIcon(kind: PinKind, shortLabel: string): L.DivIcon {
+  const cacheKey = `${kind}|${shortLabel}`;
+  const cached = pinIconCache.get(cacheKey);
+  if (cached) return cached;
+
+  const { pin: pinColor, soft, labelBg } = PIN_COLORS[kind];
+  const icon = L.divIcon({
+    html: `
+      <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;width:132px;">
+        <div style="position:relative;width:24px;height:32px;flex-shrink:0;">
+          <svg width="24" height="32" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 4px rgba(15,23,42,.25));">
+            <path d="M17 0C7.611 0 0 7.5 0 16.75C0 28.5 17 42 17 42S34 28.5 34 16.75C34 7.5 26.389 0 17 0Z" fill="${pinColor}"/>
+            <circle cx="17" cy="16" r="7.5" fill="${soft}"/>
+            <circle cx="17" cy="16" r="3.5" fill="${pinColor}"/>
+          </svg>
+          ${
+            kind === 'visit'
+              ? `<span style="position:absolute;top:-4px;right:-9px;font-size:7px;font-weight:800;letter-spacing:.02em;color:#92400e;background:#fde68a;border:1px solid #f59e0b;border-radius:999px;padding:1px 3px;">VIS</span>`
+              : ''
+          }
+        </div>
+        <div style="
+          margin-top:1px;max-width:128px;
+          display:inline-flex;align-items:center;
+          background:${labelBg};color:#0f172a;
+          border:1.5px solid ${pinColor};
+          border-radius:7px;padding:2px 6px;
+          box-shadow:0 1px 6px rgba(15,23,42,.12);
+        ">
+          <span style="font-size:10px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(shortLabel)}</span>
+        </div>
+      </div>
+    `,
+    className: 'custom-company-pin',
+    iconSize: [132, 52],
+    iconAnchor: [66, 32],
+    popupAnchor: [0, -30],
+  });
+
+  if (pinIconCache.size > 800) pinIconCache.clear();
+  pinIconCache.set(cacheKey, icon);
+  return icon;
+}
+
+function shortCompanyLabel(displayName: string): string {
+  return displayName.split(/\s+/).slice(0, 4).join(' ');
+}
+
+function buildCompanyPopupHtml(
+  company: Company,
+  selectedCity: string,
+  nextVisit: ScheduleItem | null,
+  mapsUrl: string
+): string {
+  const displayName = getCompanyDisplayName(company);
+  const active = company.activeTrainees ?? 0;
+  const visitObs = (nextVisit?.observations || nextVisit?.description || '').trim();
+
+  return `
+    <div style="min-width:250px">
+      <div style="padding-bottom:10px;border-bottom:1px solid #e2e8f0;">
+        <span style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#334155;margin-bottom:4px;">
+          ${escapeHtml(company.city || selectedCity)} · ${escapeHtml(company.neighborhoodName)}
+        </span>
+        <h4 style="margin:0;font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">${escapeHtml(displayName)}</h4>
+        ${
+          company.tradeName
+            ? `<p style="margin:2px 0 0;font-size:11px;color:#64748b;">Razão social: ${escapeHtml(company.name)}</p>`
+            : ''
+        }
+      </div>
+      <div style="padding:10px 0;font-size:12px;color:#475569;">
+        <p style="margin:0 0 6px;"><strong>Estagiários ativos:</strong> ${active}</p>
+        ${
+          company.groupName
+            ? `<p style="margin:0 0 6px;"><strong>Grupo:</strong> ${escapeHtml(company.groupName)}</p>`
+            : ''
+        }
+        <p style="margin:0 0 4px;"><strong>Endereço:</strong> ${escapeHtml(company.address)}</p>
+        ${
+          company.phone && company.phone !== '—'
+            ? `<p style="margin:0 0 6px;"><strong>Telefone:</strong> ${escapeHtml(company.phone)}</p>`
+            : ''
+        }
+        ${
+          nextVisit
+            ? `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;">
+                <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;">Visita agendada</p>
+                <p style="margin:0;font-size:12px;color:#92400e;font-weight:600;">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
+                <p style="margin:4px 0 0;font-size:11px;color:#78350f;">${escapeHtml(nextVisit.title)}</p>
+                ${
+                  visitObs
+                    ? `<p style="margin:6px 0 0;font-size:11px;color:#78350f;line-height:1.35;"><strong>Observações:</strong> ${escapeHtml(visitObs)}</p>`
+                    : ''
+                }
+              </div>`
+            : ''
+        }
+      </div>
+      <div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
+        <button type="button" data-action="details" style="flex:1;background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">
+          Ficha
+        </button>
+        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noreferrer" style="flex:1;background:#fff;color:#0f172a;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;">
+          Maps
+        </a>
+      </div>
+    </div>
+  `;
 }
 
 export function MapView({
@@ -83,6 +213,7 @@ export function MapView({
   locationRequesting = false,
   locationError = null,
   onRequestLocation,
+  isActive = true,
 }: MapViewProps) {
   const { theme } = useTheme();
   const requestLocation = onRequestLocation ?? (() => {});
@@ -92,15 +223,24 @@ export function MapView({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<Record<string, L.Marker>>({});
+  const markerSignatureRef = useRef<Record<string, string>>({});
+  const markerSyncGenRef = useRef(0);
   const userMarkerRef = useRef<L.Marker | null>(null);
   const handlersRef = useRef({ onSelectCompany });
   handlersRef.current = { onSelectCompany };
   const skipNeighborhoodFlyRef = useRef(false);
   const didAutoCityFromGpsRef = useRef(false);
+  const userLocationRef = useRef(userLocation);
+  userLocationRef.current = userLocation;
+  const selectedCityRef = useRef(DEFAULT_MAP_CITY);
+  const getNextVisitRef = useRef(getNextVisitForCompany);
+  getNextVisitRef.current = getNextVisitForCompany;
+  const companiesByIdRef = useRef<Map<string, Company>>(new Map());
 
   const [internFilter, setInternFilter] = useState<InternFilter>('with_active');
   const [selectedGroupId, setSelectedGroupId] = useState<number | 'ALL'>('ALL');
   const [nameQuery, setNameQuery] = useState('');
+  const deferredNameQuery = useDeferredValue(nameQuery);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(true);
 
@@ -115,7 +255,7 @@ export function MapView({
   );
 
   const filteredByName = useMemo(() => {
-    const q = normalizeMatchText(nameQuery);
+    const q = normalizeMatchText(deferredNameQuery);
     if (!q) return filteredByInterns;
     return filteredByInterns.filter((company) => {
       const display = normalizeMatchText(getCompanyDisplayName(company));
@@ -123,11 +263,12 @@ export function MapView({
       const fantasy = normalizeMatchText(company.tradeName);
       return display.includes(q) || legal.includes(q) || fantasy.includes(q);
     });
-  }, [filteredByInterns, nameQuery]);
+  }, [filteredByInterns, deferredNameQuery]);
 
   const cities = useMemo(() => listCities(filteredByName), [filteredByName]);
   const [selectedCity, setSelectedCity] = useState(DEFAULT_MAP_CITY);
   const didInitCityRef = useRef(false);
+  selectedCityRef.current = selectedCity;
 
   useEffect(() => {
     if (cities.length === 0) return;
@@ -180,12 +321,18 @@ export function MapView({
     return companiesInCity.filter((c) => c.neighborhoodId === selectedNeighborhoodId);
   }, [companiesInCity, selectedNeighborhoodId]);
 
-  const withActiveInCity = filterByCity(filteredByGroup, selectedCity).filter(
-    (c) => (c.activeTrainees ?? 0) > 0
-  ).length;
-  const withoutActiveInCity = filterByCity(filteredByGroup, selectedCity).filter(
-    (c) => (c.activeTrainees ?? 0) === 0
-  ).length;
+  const withActiveInCity = useMemo(
+    () =>
+      filterByCity(filteredByGroup, selectedCity).filter((c) => (c.activeTrainees ?? 0) > 0)
+        .length,
+    [filteredByGroup, selectedCity]
+  );
+  const withoutActiveInCity = useMemo(
+    () =>
+      filterByCity(filteredByGroup, selectedCity).filter((c) => (c.activeTrainees ?? 0) === 0)
+        .length,
+    [filteredByGroup, selectedCity]
+  );
 
   const groupOptions = useMemo(
     () => [
@@ -253,6 +400,9 @@ export function MapView({
       center: [-3.7327, -38.527],
       zoom: 13,
       zoomControl: false,
+      preferCanvas: true,
+      fadeAnimation: false,
+      markerZoomAnimation: false,
     });
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -268,8 +418,23 @@ export function MapView({
       map.remove();
       mapInstanceRef.current = null;
       tileLayerRef.current = null;
+      markersRef.current = {};
+      markerSignatureRef.current = {};
     };
   }, []);
+
+  // Remount oculto → corrige tamanho ao voltar para a aba mapa
+  useEffect(() => {
+    if (!isActive) return;
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const t1 = window.requestAnimationFrame(() => map.invalidateSize());
+    const t2 = window.setTimeout(() => map.invalidateSize(), 120);
+    return () => {
+      window.cancelAnimationFrame(t1);
+      window.clearTimeout(t2);
+    };
+  }, [isActive]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -307,13 +472,13 @@ export function MapView({
     if (selectedNeighborhoodId && selectedNeighborhoodId !== 'ALL') {
       const neigh = neighborhoods.find((n) => n.id === selectedNeighborhoodId);
       if (neigh) {
-        map.flyTo(neigh.center, 15, { duration: 1.2, easeLinearity: 0.25 });
+        map.flyTo(neigh.center, 15, { duration: 0.7, easeLinearity: 0.3 });
         return;
       }
     }
 
     const center = cityCenter(companiesInCity);
-    map.flyTo(center, companiesInCity.length > 0 ? 12.5 : 11, { duration: 1 });
+    map.flyTo(center, companiesInCity.length > 0 ? 12.5 : 11, { duration: 0.55 });
   }, [selectedNeighborhoodId, neighborhoods, selectedCity, companiesInCity]);
 
   // Ao definir localização: seleciona a CIDADE e centraliza nela (não no ponto GPS exato)
@@ -385,133 +550,115 @@ export function MapView({
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    Object.values(markersRef.current).forEach((m) => m.remove());
-    markersRef.current = {};
-
+    const gen = ++markerSyncGenRef.current;
+    const visitIds = companiesWithVisitIds;
     const positionedCompanies = spreadOverlappingCompanies(visibleCompanies);
+    const nextIds = new Set(positionedCompanies.map((c) => c.id));
+    const byId = new Map<string, Company>();
 
-    positionedCompanies.forEach((company) => {
-      const displayName = getCompanyDisplayName(company);
-      const shortLabel = displayName.split(/\s+/).slice(0, 4).join(' ');
-      const hasActive = (company.activeTrainees ?? 0) > 0;
-      const hasVisit = companiesWithVisitIds?.has(company.id) ?? false;
-      const nextVisit = getNextVisitForCompany?.(company.id) || null;
-      // VIS âmbar · com estagiário verde · sem estagiário vermelho
-      const pinColor = hasVisit ? '#d97706' : hasActive ? '#059669' : '#dc2626';
-      const soft = hasVisit ? '#fffbeb' : hasActive ? '#ecfdf5' : '#fef2f2';
-      const labelBg = hasVisit ? '#fffbeb' : hasActive ? '#ffffff' : '#fef2f2';
+    for (const company of positionedCompanies) {
+      byId.set(company.id, company);
+    }
+    companiesByIdRef.current = byId;
 
-      const iconHtml = `
-        <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;width:150px;">
-          <div style="position:relative;width:28px;height:36px;flex-shrink:0;">
-            <svg width="28" height="36" viewBox="0 0 34 42" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 2px 5px rgba(15,23,42,.28));">
-              <path d="M17 0C7.611 0 0 7.5 0 16.75C0 28.5 17 42 17 42S34 28.5 34 16.75C34 7.5 26.389 0 17 0Z" fill="${pinColor}"/>
-              <circle cx="17" cy="16" r="7.5" fill="${soft}"/>
-              <circle cx="17" cy="16" r="3.5" fill="${pinColor}"/>
-            </svg>
-            ${
-              hasVisit
-                ? `<span style="position:absolute;top:-5px;right:-10px;font-size:8px;font-weight:800;letter-spacing:.02em;color:#92400e;background:#fde68a;border:1px solid #f59e0b;border-radius:999px;padding:1px 4px;box-shadow:0 1px 3px rgba(0,0,0,.15);">VIS</span>`
-                : ''
-            }
-          </div>
-          <div style="
-            margin-top:2px;max-width:148px;
-            display:inline-flex;align-items:center;gap:4px;
-            background:${labelBg};color:#0f172a;
-            border:1.5px solid ${pinColor};
-            border-radius:8px;padding:3px 7px;
-            box-shadow:0 2px 8px rgba(15,23,42,.14);
-          ">
-            <span style="
-              font-size:10px;font-weight:700;line-height:1.15;
-              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-            ">${escapeHtml(shortLabel)}</span>
-          </div>
-        </div>
-      `;
+    for (const id of Object.keys(markersRef.current)) {
+      if (!nextIds.has(id)) {
+        markersRef.current[id].remove();
+        delete markersRef.current[id];
+        delete markerSignatureRef.current[id];
+      }
+    }
 
-      const customIcon = L.divIcon({
-        html: iconHtml,
-        className: 'custom-company-pin',
-        iconSize: [150, 58],
-        iconAnchor: [75, 36],
-        popupAnchor: [0, -34],
-      });
+    type Positioned = (typeof positionedCompanies)[number];
+    const toCreate: Positioned[] = [];
 
-      const marker = L.marker([company.mapLat, company.mapLng], { icon: customIcon }).addTo(map);
-      const active = company.activeTrainees ?? 0;
-      const visitObs = (nextVisit?.observations || nextVisit?.description || '').trim();
-
-      const popupDiv = document.createElement('div');
-      popupDiv.style.minWidth = '250px';
-      popupDiv.innerHTML = `
-        <div style="padding-bottom:10px;border-bottom:1px solid #e2e8f0;">
-          <span style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#334155;margin-bottom:4px;">
-            ${escapeHtml(company.city || selectedCity)} · ${escapeHtml(company.neighborhoodName)}
-          </span>
-          <h4 style="margin:0;font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">${escapeHtml(displayName)}</h4>
-          ${
-            company.tradeName
-              ? `<p style="margin:2px 0 0;font-size:11px;color:#64748b;">Razão social: ${escapeHtml(company.name)}</p>`
-              : ''
-          }
-        </div>
-        <div style="padding:10px 0;font-size:12px;color:#475569;">
-          <p style="margin:0 0 6px;"><strong>Estagiários ativos:</strong> ${active}</p>
-          ${
-            company.groupName
-              ? `<p style="margin:0 0 6px;"><strong>Grupo:</strong> ${escapeHtml(company.groupName)}</p>`
-              : ''
-          }
-          <p style="margin:0 0 4px;"><strong>Endereço:</strong> ${escapeHtml(company.address)}</p>
-          ${
-            company.phone && company.phone !== '—'
-              ? `<p style="margin:0 0 6px;"><strong>Telefone:</strong> ${escapeHtml(company.phone)}</p>`
-              : ''
-          }
-          ${
-            nextVisit
-              ? `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;">
-                  <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;">Visita agendada</p>
-                  <p style="margin:0;font-size:12px;color:#92400e;font-weight:600;">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
-                  <p style="margin:4px 0 0;font-size:11px;color:#78350f;">${escapeHtml(nextVisit.title)}</p>
-                  ${
-                    visitObs
-                      ? `<p style="margin:6px 0 0;font-size:11px;color:#78350f;line-height:1.35;"><strong>Observações:</strong> ${escapeHtml(visitObs)}</p>`
-                      : ''
-                  }
-                </div>`
-              : ''
-          }
-        </div>
-        <div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
-          <button id="btn-details-${company.id}" style="flex:1;background:#0f766e;color:#fff;border:0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">
-            Ficha
-          </button>
-          <a id="btn-maps-${company.id}" href="${escapeHtml(googleMapsCompanyUrl(company, userLocation))}" target="_blank" rel="noreferrer" style="flex:1;background:#fff;color:#0f172a;border:1px solid #e2e8f0;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;">
-            Maps
-          </a>
-        </div>
-      `;
-
-      marker.bindPopup(popupDiv);
-      marker.on('popupopen', () => {
-        const detailsBtn = document.getElementById(`btn-details-${company.id}`);
+    const attachLazyPopup = (marker: L.Marker, companyId: string) => {
+      marker.unbindPopup();
+      marker.bindPopup('<div style="min-width:120px;padding:8px;color:#64748b;font-size:12px">Carregando…</div>');
+      marker.off('popupopen');
+      marker.on('popupopen', (e) => {
+        const company = companiesByIdRef.current.get(companyId);
+        if (!company) return;
+        const nextVisit = getNextVisitRef.current?.(companyId) || null;
+        const mapsUrl = googleMapsCompanyUrl(company, userLocationRef.current);
+        const html = buildCompanyPopupHtml(
+          company,
+          selectedCityRef.current,
+          nextVisit,
+          mapsUrl
+        );
+        const popup = e.popup;
+        popup.setContent(html);
+        const el = popup.getElement();
+        const detailsBtn = el?.querySelector<HTMLButtonElement>('[data-action="details"]');
         if (detailsBtn) {
-          detailsBtn.onclick = () => handlersRef.current.onSelectCompany(company);
+          detailsBtn.onclick = () => {
+            const current = companiesByIdRef.current.get(companyId);
+            if (current) handlersRef.current.onSelectCompany(current);
+          };
         }
       });
+    };
 
-      markersRef.current[company.id] = marker;
-    });
-  }, [
-    visibleCompanies,
-    selectedCity,
-    companiesWithVisitIds,
-    getNextVisitForCompany,
-    userLocation,
-  ]);
+    for (const company of positionedCompanies) {
+      const displayName = getCompanyDisplayName(company);
+      const shortLabel = shortCompanyLabel(displayName);
+      const hasActive = (company.activeTrainees ?? 0) > 0;
+      const hasVisit = visitIds?.has(company.id) ?? false;
+      const kind = pinKind(hasVisit, hasActive);
+      const signature = `${company.mapLat.toFixed(6)}|${company.mapLng.toFixed(6)}|${kind}|${shortLabel}`;
+      const existing = markersRef.current[company.id];
+
+      if (existing) {
+        if (markerSignatureRef.current[company.id] !== signature) {
+          existing.setLatLng([company.mapLat, company.mapLng]);
+          existing.setIcon(getCompanyPinIcon(kind, shortLabel));
+          markerSignatureRef.current[company.id] = signature;
+        }
+      } else {
+        toCreate.push(company);
+      }
+    }
+
+    let index = 0;
+    const CHUNK = 40;
+
+    const createChunk = () => {
+      if (gen !== markerSyncGenRef.current) return;
+      const end = Math.min(index + CHUNK, toCreate.length);
+
+      for (; index < end; index++) {
+        const company = toCreate[index];
+        const displayName = getCompanyDisplayName(company);
+        const shortLabel = shortCompanyLabel(displayName);
+        const hasActive = (company.activeTrainees ?? 0) > 0;
+        const hasVisit = visitIds?.has(company.id) ?? false;
+        const kind = pinKind(hasVisit, hasActive);
+        const signature = `${company.mapLat.toFixed(6)}|${company.mapLng.toFixed(6)}|${kind}|${shortLabel}`;
+
+        const marker = L.marker([company.mapLat, company.mapLng], {
+          icon: getCompanyPinIcon(kind, shortLabel),
+        }).addTo(map);
+
+        attachLazyPopup(marker, company.id);
+        markersRef.current[company.id] = marker;
+        markerSignatureRef.current[company.id] = signature;
+      }
+
+      if (index < toCreate.length) {
+        window.requestAnimationFrame(createChunk);
+      }
+    };
+
+    if (toCreate.length > 0) {
+      createChunk();
+    }
+
+    return () => {
+      // invalida chunks em andamento ao mudar filtros
+      markerSyncGenRef.current += 1;
+    };
+  }, [visibleCompanies, companiesWithVisitIds]);
 
   // Ver no mapa: voa até o pin e abre popup
   useEffect(() => {
@@ -529,7 +676,7 @@ export function MapView({
       const lat = company.lat;
       const lng = company.lng;
 
-      map.flyTo([lat, lng], 17, { duration: 1.1, easeLinearity: 0.25 });
+      map.flyTo([lat, lng], 17, { duration: 0.75, easeLinearity: 0.3 });
 
       const openPopup = () => {
         const m = markersRef.current[company.id];

@@ -82,7 +82,29 @@ export type CompanyMinivagasExtras = {
   minivagasName?: string;
 };
 
+/** Unidade (CNPJ) dentro de um grupo Minivagas. */
+export type GroupMemberRef = {
+  cnpjDigits: string;
+  companyId: string | null;
+  companyName: string;
+  onMap: boolean;
+  /** Métricas só deste CNPJ (não do grupo). */
+  contratados: number;
+  reprovados: number;
+  naoCompareceu: number;
+  emFunil: number;
+  hireRate: number | null;
+  /** Contagem do ranking de volume atual (contratado/reprovado/falta). */
+  volumeCount: number;
+};
+
 export type HiringRankRow = {
+  /** `mv-{userId}` | `estagius-{id}` | `solo-{cnpj}` */
+  groupKey: string;
+  /** ID do user Minivagas (role company), quando houver. */
+  groupId: number | null;
+  memberCount: number;
+  members: GroupMemberRef[];
   cnpjDigits: string;
   companyId: string | null;
   companyName: string;
@@ -91,15 +113,27 @@ export type HiringRankRow = {
 };
 
 export type ReputationRankRow = {
-  /** Chave do grupo (`group-123`) ou empresa sola (`solo-CNPJ`). */
+  /** `mv-{userId}` | `estagius-{id}` | `solo-{cnpj}` */
   groupKey: string;
   groupId: number | null;
   memberCount: number;
+  members: GroupMemberRef[];
   cnpjDigits: string;
   companyId: string | null;
   companyName: string;
   onMap: boolean;
   reputation: CompanyReputation;
+};
+
+type MinivagasGroupMeta = {
+  userId: number;
+  name: string;
+  cnpjs: string[];
+};
+
+export type MinivagasGroupIndex = {
+  cnpjToGroup: Map<string, string>;
+  groups: Map<string, MinivagasGroupMeta>;
 };
 
 export type HiringPeriod = 'all' | 'month';
@@ -436,68 +470,210 @@ export function extrasForCompany(
   };
 }
 
-export function buildSingleSideRanking(
-  companies: Company[],
-  list: MinivagasCandidato[],
-  limit = 20
-): HiringRankRow[] {
-  const companyByCnpj = new Map<string, Company>();
-  for (const company of companies) {
-    const digits = normalizeCnpj(company.cnpj);
-    if (digits) companyByCnpj.set(digits, company);
+/** Índice CNPJ → grupo Minivagas (`users[].cnpjs`). Grupos maiores ganham em conflito. */
+export function buildMinivagasGroupIndex(users: MinivagasUser[]): MinivagasGroupIndex {
+  const cnpjToGroup = new Map<string, string>();
+  const groups = new Map<string, MinivagasGroupMeta>();
+
+  const ranked = users
+    .map((user) => ({ user, cnpjs: allUserCnpjs(user) }))
+    .filter(({ user, cnpjs }) => {
+      if (cnpjs.length === 0) return false;
+      const role = (user.role || '').toLowerCase();
+      return role === 'company' || role === '';
+    })
+    .sort((a, b) => b.cnpjs.length - a.cnpjs.length || b.user.id - a.user.id);
+
+  for (const { user, cnpjs } of ranked) {
+    const key = `mv-${user.id}`;
+    const name = (user.name || '').trim() || `Grupo ${user.id}`;
+    groups.set(key, { userId: user.id, name, cnpjs });
+    for (const cnpj of cnpjs) {
+      if (!cnpjToGroup.has(cnpj)) cnpjToGroup.set(cnpj, key);
+    }
   }
 
-  const counts = countByCnpj(list);
-  const rows: HiringRankRow[] = [];
-
-  for (const [cnpjDigits, data] of counts.entries()) {
-    if (data.count <= 0) continue;
-    const matched = companyByCnpj.get(cnpjDigits);
-    rows.push({
-      cnpjDigits,
-      companyId: matched?.id ?? null,
-      companyName: matched ? matched.tradeName || matched.name : data.name,
-      count: data.count,
-      onMap: Boolean(matched),
-    });
-  }
-
-  return rows
-    .sort((a, b) => b.count - a.count || a.companyName.localeCompare(b.companyName, 'pt-BR'))
-    .slice(0, limit);
+  return { cnpjToGroup, groups };
 }
 
-function groupKeyForCompany(company: Company | undefined, cnpjDigits: string): string {
-  if (company?.groupId != null) return `group-${company.groupId}`;
+function companyByCnpjMap(companies: Company[]): Map<string, Company> {
+  const map = new Map<string, Company>();
+  for (const company of companies) {
+    const digits = normalizeCnpj(company.cnpj);
+    if (digits) map.set(digits, company);
+  }
+  return map;
+}
+
+function resolveGroupKey(
+  cnpjDigits: string,
+  index: MinivagasGroupIndex,
+  company?: Company
+): string {
+  const fromMv = index.cnpjToGroup.get(cnpjDigits);
+  if (fromMv) return fromMv;
+  if (company?.groupId != null) return `estagius-${company.groupId}`;
   return `solo-${cnpjDigits}`;
 }
 
-function groupLabelForCompany(company: Company | undefined, fallbackName: string): string {
-  if (company?.groupId != null) {
-    return company.groupName?.trim() || `Grupo ${company.groupId}`;
+function resolveGroupName(
+  groupKey: string,
+  index: MinivagasGroupIndex,
+  company: Company | undefined,
+  fallbackName: string
+): string {
+  const meta = index.groups.get(groupKey);
+  if (meta?.name) return meta.name;
+  if (groupKey.startsWith('estagius-')) {
+    return company?.groupName?.trim() || `Grupo ${groupKey.replace('estagius-', '')}`;
   }
   if (company) return company.tradeName || company.name;
   return fallbackName;
 }
 
+function membersForGroupKey(
+  groupKey: string,
+  index: MinivagasGroupIndex,
+  companyByCnpj: Map<string, Company>,
+  extraCnpjs: string[] = [],
+  statsByCnpj?: Map<string, Counts>,
+  volumeByCnpj?: Map<string, number>
+): GroupMemberRef[] {
+  const meta = index.groups.get(groupKey);
+  let cnpjs: string[] = [];
+
+  if (meta) {
+    cnpjs = [...meta.cnpjs];
+  } else if (groupKey.startsWith('solo-')) {
+    cnpjs = [groupKey.slice('solo-'.length)];
+  } else if (groupKey.startsWith('estagius-')) {
+    const estagiusId = Number(groupKey.replace('estagius-', ''));
+    cnpjs = Array.from(companyByCnpj.entries())
+      .filter(([, company]) => company.groupId === estagiusId)
+      .map(([digits]) => digits);
+  }
+
+  for (const extra of extraCnpjs) {
+    if (extra && !cnpjs.includes(extra)) cnpjs.push(extra);
+  }
+
+  const members = cnpjs.map((cnpjDigits) => {
+    const matched = companyByCnpj.get(cnpjDigits);
+    const stats = statsByCnpj?.get(cnpjDigits);
+    const reputation = stats ? computeReputation(stats) : null;
+    return {
+      cnpjDigits,
+      companyId: matched?.id ?? null,
+      companyName: matched
+        ? matched.tradeName || matched.name
+        : stats?.name || `CNPJ ${cnpjDigits}`,
+      onMap: Boolean(matched),
+      contratados: stats?.contratados ?? 0,
+      reprovados: stats?.reprovados ?? 0,
+      naoCompareceu: stats?.naoCompareceu ?? 0,
+      emFunil: stats?.emFunil ?? 0,
+      hireRate: reputation?.hireRate ?? null,
+      volumeCount: volumeByCnpj?.get(cnpjDigits) ?? 0,
+    };
+  });
+
+  // Unidades com movimento primeiro
+  return members.sort(
+    (a, b) =>
+      b.contratados +
+        b.reprovados +
+        b.naoCompareceu +
+        b.volumeCount -
+        (a.contratados + a.reprovados + a.naoCompareceu + a.volumeCount) ||
+      a.companyName.localeCompare(b.companyName, 'pt-BR')
+  );
+}
+
+function pickRepresentative(members: GroupMemberRef[]): GroupMemberRef | null {
+  const onMap = members.filter((m) => m.onMap && m.companyId);
+  if (onMap.length > 0) return onMap[0];
+  return members[0] || null;
+}
+
+function parseMinivagasGroupId(groupKey: string): number | null {
+  if (!groupKey.startsWith('mv-')) return null;
+  const id = Number(groupKey.slice(3));
+  return Number.isFinite(id) ? id : null;
+}
+
 /**
- * Contagens de reputação por GRUPO:
- * - contratados / reprovado_empresa / nao_compareceu_empresa
- * - emFunil = ainda em entrevista (freeze ou snapshot ao vivo)
+ * Ranking de volume (contratados / reprovados / faltas) agregado por grupo Minivagas.
+ * Sem limite por padrão — lista todos os grupos com movimento.
+ */
+export function buildSingleSideRanking(
+  companies: Company[],
+  list: MinivagasCandidato[],
+  index: MinivagasGroupIndex,
+  limit: number | null = null,
+  statsByCnpj?: Map<string, Counts>
+): HiringRankRow[] {
+  const companyByCnpj = companyByCnpjMap(companies);
+  const byGroup = new Map<string, { count: number; name: string; cnpjs: Set<string> }>();
+  const volumeByCnpj = new Map<string, number>();
+
+  for (const item of list) {
+    const cnpj = candidatoCnpj(item);
+    if (cnpj.length < 11) continue;
+    const company = companyByCnpj.get(cnpj);
+    const key = resolveGroupKey(cnpj, index, company);
+    const fallback = (item.job_posting?.company_name || '').trim() || `CNPJ ${cnpj}`;
+    const name = resolveGroupName(key, index, company, fallback);
+    const current = byGroup.get(key) || { count: 0, name, cnpjs: new Set<string>() };
+    current.count += 1;
+    current.cnpjs.add(cnpj);
+    if (!current.name || current.name.startsWith('CNPJ ')) current.name = name;
+    byGroup.set(key, current);
+    volumeByCnpj.set(cnpj, (volumeByCnpj.get(cnpj) || 0) + 1);
+  }
+
+  const rows: HiringRankRow[] = [];
+  for (const [groupKey, data] of byGroup.entries()) {
+    if (data.count <= 0) continue;
+    const members = membersForGroupKey(
+      groupKey,
+      index,
+      companyByCnpj,
+      [...data.cnpjs],
+      statsByCnpj,
+      volumeByCnpj
+    );
+    const rep = pickRepresentative(members);
+    rows.push({
+      groupKey,
+      groupId: parseMinivagasGroupId(groupKey),
+      memberCount: Math.max(1, members.length),
+      members,
+      cnpjDigits: rep?.cnpjDigits || [...data.cnpjs][0] || groupKey,
+      companyId: rep?.companyId ?? null,
+      companyName: data.name,
+      count: data.count,
+      onMap: Boolean(rep?.onMap),
+    });
+  }
+
+  const sorted = rows.sort(
+    (a, b) => b.count - a.count || a.companyName.localeCompare(b.companyName, 'pt-BR')
+  );
+  return limit != null ? sorted.slice(0, limit) : sorted;
+}
+
+/**
+ * Contagens de reputação por GRUPO Minivagas (soma dos CNPJs do user).
  */
 export function buildReputationStatsByGroup(
   companies: Company[],
+  index: MinivagasGroupIndex,
   reprovadosEmpresa: MinivagasCandidato[],
   contratados: MinivagasCandidato[],
   naoCompareceu: MinivagasCandidato[],
   emEntrevista: MinivagasCandidato[]
 ): Map<string, Counts> {
-  const companyByCnpj = new Map<string, Company>();
-  for (const company of companies) {
-    const digits = normalizeCnpj(company.cnpj);
-    if (digits) companyByCnpj.set(digits, company);
-  }
-
+  const companyByCnpj = companyByCnpjMap(companies);
   const byGroup = new Map<string, Counts>();
 
   const add = (list: MinivagasCandidato[], field: CountField) => {
@@ -505,11 +681,9 @@ export function buildReputationStatsByGroup(
       const cnpj = candidatoCnpj(item);
       if (cnpj.length < 11) continue;
       const company = companyByCnpj.get(cnpj);
-      const key = groupKeyForCompany(company, cnpj);
-      const name = groupLabelForCompany(
-        company,
-        (item.job_posting?.company_name || '').trim() || `CNPJ ${cnpj}`
-      );
+      const key = resolveGroupKey(cnpj, index, company);
+      const fallback = (item.job_posting?.company_name || '').trim() || `CNPJ ${cnpj}`;
+      const name = resolveGroupName(key, index, company, fallback);
       const current = byGroup.get(key) || emptyCounts(name);
       current[field] += 1;
       if (!current.name || current.name.startsWith('CNPJ ')) current.name = name;
@@ -550,6 +724,40 @@ function freezeEntriesToCandidatos(
     }));
 }
 
+/** Chave estável candidato+vaga — evita contar duas vezes no merge freeze × API. */
+function candidatoJobKey(item: MinivagasCandidato): string {
+  const jobId = item.job_posting_id ?? item.job_posting?.id ?? 0;
+  return `${item.id}:${jobId}`;
+}
+
+/**
+ * Une listas de desfecho: API ao vivo tem prioridade; freeze preenche buracos
+ * (ex.: contratado antigo que sumiu da paginação do sync).
+ */
+function mergeCandidatosByJob(
+  primary: MinivagasCandidato[],
+  secondary: MinivagasCandidato[]
+): MinivagasCandidato[] {
+  const map = new Map<string, MinivagasCandidato>();
+  for (const item of secondary) {
+    map.set(candidatoJobKey(item), item);
+  }
+  for (const item of primary) {
+    map.set(candidatoJobKey(item), item);
+  }
+  return [...map.values()];
+}
+
+/** Tira do funil quem já tem desfecho na API (não contar como enviado duas vezes). */
+function excludeDecidedFromFunnel(
+  emFunil: MinivagasCandidato[],
+  decided: MinivagasCandidato[]
+): MinivagasCandidato[] {
+  if (emFunil.length === 0 || decided.length === 0) return emFunil;
+  const decidedKeys = new Set(decided.map(candidatoJobKey));
+  return emFunil.filter((item) => !decidedKeys.has(candidatoJobKey(item)));
+}
+
 function isFreezeEntryInMonth(entry: FreezeEntry, now = new Date()): boolean {
   const raw = entry.outcomeAt || entry.lastSeenAt || entry.firstSeenAt || entry.updatedAtApi || '';
   const date = new Date(raw);
@@ -560,72 +768,110 @@ function isFreezeEntryInMonth(entry: FreezeEntry, now = new Date()): boolean {
 /** Espelha a contagem do grupo em cada CNPJ membro (para ficha da empresa). */
 export function expandGroupStatsToCnpjs(
   companies: Company[],
+  index: MinivagasGroupIndex,
   hiringByGroup: Map<string, Counts>
 ): Map<string, Counts> {
   const byCnpj = new Map<string, Counts>();
+  const companyByCnpj = companyByCnpjMap(companies);
+
+  for (const [groupKey, counts] of hiringByGroup.entries()) {
+    const members = membersForGroupKey(groupKey, index, companyByCnpj);
+    if (members.length === 0 && groupKey.startsWith('solo-')) {
+      byCnpj.set(groupKey.slice('solo-'.length), counts);
+      continue;
+    }
+    for (const member of members) {
+      byCnpj.set(member.cnpjDigits, counts);
+    }
+  }
+
+  // Garante CNPJs do mapa que caem no mesmo grupo mesmo sem atividade própria
   for (const company of companies) {
     const digits = normalizeCnpj(company.cnpj);
-    if (!digits) continue;
-    const key = groupKeyForCompany(company, digits);
+    if (!digits || byCnpj.has(digits)) continue;
+    const key = resolveGroupKey(digits, index, company);
     const counts = hiringByGroup.get(key);
     if (counts) byCnpj.set(digits, counts);
   }
+
   return byCnpj;
 }
 
-/** Ranking de reputação por GRUPO (taxa após entrevista presencial). */
+/** Ranking de reputação por GRUPO Minivagas (taxa após entrevista). */
 export function buildReputationRanking(
   companies: Company[],
+  index: MinivagasGroupIndex,
   hiringByGroup: Map<string, Counts>,
-  options?: { minDecided?: number; limit?: number }
-): ReputationRankRow[] {
-  const minDecided = options?.minDecided ?? 5;
-  const limit = options?.limit ?? 20;
-
-  const membersByGroup = new Map<string, Company[]>();
-  for (const company of companies) {
-    const digits = normalizeCnpj(company.cnpj);
-    if (!digits) continue;
-    const key = groupKeyForCompany(company, digits);
-    const list = membersByGroup.get(key) || [];
-    list.push(company);
-    membersByGroup.set(key, list);
+  options?: {
+    /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 1 = todos com dado. */
+    minDecided?: number;
+    /** null = lista completa. */
+    limit?: number | null;
+    /** Contagens reais por CNPJ (não espelho do grupo). */
+    statsByCnpj?: Map<string, Counts>;
   }
+): ReputationRankRow[] {
+  const minDecided = options?.minDecided ?? 1;
+  const limit = options?.limit ?? null;
+  const companyByCnpj = companyByCnpjMap(companies);
+  const statsByCnpj = options?.statsByCnpj;
 
   const rows: ReputationRankRow[] = [];
   for (const [groupKey, counts] of hiringByGroup.entries()) {
     const reputation = computeReputation(counts);
-    if ((reputation.decididos || 0) < minDecided) continue;
-    if (reputation.hireRate == null) continue;
+    // Inclui qualquer grupo com movimento (enviados ou resultado)
+    if ((reputation.enviados || 0) < 1) continue;
+    if ((reputation.decididos || 0) < minDecided && (reputation.emFunil || 0) === 0) {
+      continue;
+    }
 
-    const members = membersByGroup.get(groupKey) || [];
-    const representative =
-      [...members].sort(
-        (a, b) => (b.activeTrainees ?? 0) - (a.activeTrainees ?? 0)
-      )[0] || null;
-    const groupId = groupKey.startsWith('group-')
-      ? Number(groupKey.replace('group-', ''))
-      : null;
+    const members = membersForGroupKey(
+      groupKey,
+      index,
+      companyByCnpj,
+      [],
+      statsByCnpj
+    );
+    const rep = pickRepresentative(members);
 
     rows.push({
       groupKey,
-      groupId: Number.isFinite(groupId) ? groupId : null,
+      groupId: parseMinivagasGroupId(groupKey),
       memberCount: Math.max(1, members.length),
-      cnpjDigits: normalizeCnpj(representative?.cnpj) || groupKey,
-      companyId: representative?.id ?? null,
+      members,
+      cnpjDigits: rep?.cnpjDigits || groupKey,
+      companyId: rep?.companyId ?? null,
       companyName: counts.name,
-      onMap: Boolean(representative),
+      onMap: Boolean(rep?.onMap),
       reputation,
     });
   }
 
-  return rows
-    .sort(
-      (a, b) =>
-        (b.reputation.hireRate ?? 0) - (a.reputation.hireRate ?? 0) ||
-        b.reputation.decididos - a.reputation.decididos
-    )
-    .slice(0, limit);
+  const sorted = rows.sort(
+    (a, b) =>
+      (b.reputation.hireRate ?? -1) - (a.reputation.hireRate ?? -1) ||
+      b.reputation.decididos - a.reputation.decididos ||
+      b.reputation.enviados - a.reputation.enviados ||
+      a.companyName.localeCompare(b.companyName, 'pt-BR')
+  );
+  return limit != null ? sorted.slice(0, limit) : sorted;
+}
+
+export function reputationCriteria(label: ReputationLabel): string {
+  switch (label) {
+    case 'Excelente':
+      return 'Taxa de contratação de 40% ou mais';
+    case 'Boa':
+      return 'Taxa de contratação entre 25% e 39%';
+    case 'Regular':
+      return 'Taxa de contratação entre 15% e 24%';
+    case 'Atenção':
+      return 'Taxa de contratação entre 8% e 14%';
+    case 'Crítica':
+      return 'Taxa de contratação abaixo de 8%';
+    default:
+      return 'Ainda sem resultado após entrevista';
+  }
 }
 
 export type StatusTotals = {
@@ -692,15 +938,15 @@ export function rankingsForPeriod(
 export function reputationTone(label: ReputationLabel): string {
   switch (label) {
     case 'Excelente':
-      return 'text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-200 dark:bg-emerald-950/50 dark:border-emerald-800';
+      return 'text-emerald-800 bg-emerald-50 border-emerald-200 dark:text-emerald-200 dark:bg-emerald-950/55 dark:border-emerald-700/70';
     case 'Boa':
-      return 'text-teal-700 bg-teal-50 border-teal-200 dark:text-teal-200 dark:bg-teal-950/50 dark:border-teal-800';
+      return 'text-teal-800 bg-teal-50 border-teal-200 dark:text-teal-200 dark:bg-teal-950/55 dark:border-teal-700/70';
     case 'Regular':
-      return 'text-amber-800 bg-amber-50 border-amber-200 dark:text-amber-100 dark:bg-amber-950/40 dark:border-amber-800';
+      return 'text-amber-900 bg-amber-50 border-amber-200 dark:text-amber-100 dark:bg-amber-950/45 dark:border-amber-700/70';
     case 'Atenção':
-      return 'text-orange-800 bg-orange-50 border-orange-200 dark:text-orange-100 dark:bg-orange-950/40 dark:border-orange-800';
+      return 'text-orange-900 bg-orange-50 border-orange-200 dark:text-orange-100 dark:bg-orange-950/45 dark:border-orange-700/70';
     case 'Crítica':
-      return 'text-rose-800 bg-rose-50 border-rose-200 dark:text-rose-100 dark:bg-rose-950/40 dark:border-rose-800';
+      return 'text-rose-800 bg-rose-50 border-rose-200 dark:text-rose-100 dark:bg-rose-950/50 dark:border-rose-700/70';
     default:
       return 'text-muted-foreground bg-muted border-border';
   }
@@ -731,37 +977,68 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
   const freezeEntries = freezePayload?.entries || [];
   const useFreeze = freezeEntries.length > 0;
 
-  const reprovadosEmpresa = useFreeze
-    ? freezeEntriesToCandidatos(freezeEntries, 'reprovado_empresa')
-    : reprovadosEmpresaRes.items;
-  const contratados = useFreeze
-    ? freezeEntriesToCandidatos(freezeEntries, 'contratado')
-    : contratadosRes.items;
-  const naoCompareceu = useFreeze
-    ? freezeEntriesToCandidatos(freezeEntries, 'nao_compareceu_empresa')
-    : naoCompareceuRes.items;
-  const emEntrevista = useFreeze
-    ? freezeEntriesToCandidatos(freezeEntries, 'em_funil')
-    : entrevistaLive;
-
-  // Volume por empresa: tags ao vivo (mais legível no ranking de volume)
+  // Volume: sempre tags ao vivo (bate com a listagem do Minivagas)
   const volumeReprovados = reprovadosEmpresaRes.items;
   const volumeContratados = contratadosRes.items;
   const volumeNaoCompareceu = naoCompareceuRes.items;
   const volumeEntrevista = entrevistaLive;
 
+  // Reputação — desfechos: API ao vivo ∪ freeze (API manda; freeze completa faltantes)
+  // Funil: freeze (histórico de entrevista sem desfecho), sem quem já decidiu na API
+  const freezeReprovados = useFreeze
+    ? freezeEntriesToCandidatos(freezeEntries, 'reprovado_empresa')
+    : [];
+  const freezeContratados = useFreeze
+    ? freezeEntriesToCandidatos(freezeEntries, 'contratado')
+    : [];
+  const freezeNaoCompareceu = useFreeze
+    ? freezeEntriesToCandidatos(freezeEntries, 'nao_compareceu_empresa')
+    : [];
+  const freezeEmFunil = useFreeze
+    ? freezeEntriesToCandidatos(freezeEntries, 'em_funil')
+    : [];
+
+  const reprovadosEmpresa = useFreeze
+    ? mergeCandidatosByJob(volumeReprovados, freezeReprovados)
+    : volumeReprovados;
+  const contratados = useFreeze
+    ? mergeCandidatosByJob(volumeContratados, freezeContratados)
+    : volumeContratados;
+  const naoCompareceu = useFreeze
+    ? mergeCandidatosByJob(volumeNaoCompareceu, freezeNaoCompareceu)
+    : volumeNaoCompareceu;
+  const emEntrevista = useFreeze
+    ? excludeDecidedFromFunnel(freezeEmFunil, [
+        ...reprovadosEmpresa,
+        ...contratados,
+        ...naoCompareceu,
+      ])
+    : volumeEntrevista;
+
   const freezeMonth = freezeEntries.filter((e) => isFreezeEntryInMonth(e));
   const reprovadosMes = useFreeze
-    ? freezeEntriesToCandidatos(freezeMonth, 'reprovado_empresa')
+    ? mergeCandidatosByJob(
+        filterCandidatosByPeriod(volumeReprovados, 'month'),
+        freezeEntriesToCandidatos(freezeMonth, 'reprovado_empresa')
+      )
     : filterCandidatosByPeriod(reprovadosEmpresa, 'month');
   const contratadosMes = useFreeze
-    ? freezeEntriesToCandidatos(freezeMonth, 'contratado')
+    ? mergeCandidatosByJob(
+        filterCandidatosByPeriod(volumeContratados, 'month'),
+        freezeEntriesToCandidatos(freezeMonth, 'contratado')
+      )
     : filterCandidatosByPeriod(contratados, 'month');
   const naoCompareceuMes = useFreeze
-    ? freezeEntriesToCandidatos(freezeMonth, 'nao_compareceu_empresa')
+    ? mergeCandidatosByJob(
+        filterCandidatosByPeriod(volumeNaoCompareceu, 'month'),
+        freezeEntriesToCandidatos(freezeMonth, 'nao_compareceu_empresa')
+      )
     : filterCandidatosByPeriod(naoCompareceu, 'month');
   const entrevistaMes = useFreeze
-    ? freezeEntriesToCandidatos(freezeMonth, 'em_funil')
+    ? excludeDecidedFromFunnel(
+        freezeEntriesToCandidatos(freezeMonth, 'em_funil'),
+        [...reprovadosMes, ...contratadosMes, ...naoCompareceuMes]
+      )
     : filterCandidatosByPeriod(emEntrevista, 'month');
 
   const volumeReprovadosMes = filterCandidatosByPeriod(volumeReprovados, 'month');
@@ -770,6 +1047,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
   const volumeEntrevistaMes = filterCandidatosByPeriod(volumeEntrevista, 'month');
 
   const observacoesByCnpj = buildObservacoesByCnpj(users);
+  const groupIndex = buildMinivagasGroupIndex(users);
 
   const hiringByCnpj = buildHiringStatsByCnpj(
     volumeReprovados,
@@ -786,6 +1064,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
 
   const reputationByGroup = buildReputationStatsByGroup(
     companies,
+    groupIndex,
     reprovadosEmpresa,
     contratados,
     naoCompareceu,
@@ -793,13 +1072,32 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
   );
   const reputationByGroupMonth = buildReputationStatsByGroup(
     companies,
+    groupIndex,
     reprovadosMes,
     contratadosMes,
     naoCompareceuMes,
     entrevistaMes
   );
-  const reputationByCnpj = expandGroupStatsToCnpjs(companies, reputationByGroup);
-  const reputationByCnpjMonth = expandGroupStatsToCnpjs(companies, reputationByGroupMonth);
+  const reputationByCnpj = expandGroupStatsToCnpjs(companies, groupIndex, reputationByGroup);
+  const reputationByCnpjMonth = expandGroupStatsToCnpjs(
+    companies,
+    groupIndex,
+    reputationByGroupMonth
+  );
+
+  // Contagens reais por CNPJ (para o menu de unidades — não espelha o grupo)
+  const reputationStatsByCnpj = buildHiringStatsByCnpj(
+    reprovadosEmpresa,
+    contratados,
+    naoCompareceu,
+    emEntrevista
+  );
+  const reputationStatsByCnpjMonth = buildHiringStatsByCnpj(
+    reprovadosMes,
+    contratadosMes,
+    naoCompareceuMes,
+    entrevistaMes
+  );
 
   const companyCnpjs = new Set(
     companies.map((c) => normalizeCnpj(c.cnpj)).filter((d) => d.length >= 11)
@@ -818,15 +1116,55 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     hiringByCnpjMonth,
     reputationByCnpj,
     reputationByCnpjMonth,
-    topRejecters: buildSingleSideRanking(companies, volumeReprovados),
-    topHired: buildSingleSideRanking(companies, volumeContratados),
-    topNoShows: buildSingleSideRanking(companies, volumeNaoCompareceu),
-    topRejectersMonth: buildSingleSideRanking(companies, volumeReprovadosMes),
-    topHiredMonth: buildSingleSideRanking(companies, volumeContratadosMes),
-    topNoShowsMonth: buildSingleSideRanking(companies, volumeNaoCompareceuMes),
-    topReputation: buildReputationRanking(companies, reputationByGroup),
-    topReputationMonth: buildReputationRanking(companies, reputationByGroupMonth, {
-      minDecided: 3,
+    topRejecters: buildSingleSideRanking(
+      companies,
+      volumeReprovados,
+      groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topHired: buildSingleSideRanking(
+      companies,
+      volumeContratados,
+      groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topNoShows: buildSingleSideRanking(
+      companies,
+      volumeNaoCompareceu,
+      groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topRejectersMonth: buildSingleSideRanking(
+      companies,
+      volumeReprovadosMes,
+      groupIndex,
+      null,
+      hiringByCnpjMonth
+    ),
+    topHiredMonth: buildSingleSideRanking(
+      companies,
+      volumeContratadosMes,
+      groupIndex,
+      null,
+      hiringByCnpjMonth
+    ),
+    topNoShowsMonth: buildSingleSideRanking(
+      companies,
+      volumeNaoCompareceuMes,
+      groupIndex,
+      null,
+      hiringByCnpjMonth
+    ),
+    topReputation: buildReputationRanking(companies, groupIndex, reputationByGroup, {
+      minDecided: 0,
+      statsByCnpj: reputationStatsByCnpj,
+    }),
+    topReputationMonth: buildReputationRanking(companies, groupIndex, reputationByGroupMonth, {
+      minDecided: 0,
+      statsByCnpj: reputationStatsByCnpjMonth,
     }),
     matchedObservacoes,
     matchedHiring,
@@ -834,9 +1172,13 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
       reprovados: volumeReprovados.length,
       contratados: volumeContratados.length,
       naoCompareceu: volumeNaoCompareceu.length,
-      emFunil: useFreeze ? emEntrevista.length : volumeEntrevista.length,
+      emFunil: emEntrevista.length,
       enviados: useFreeze
-        ? freezeEntries.length
+        ? new Set(
+            [...reprovadosEmpresa, ...contratados, ...naoCompareceu, ...emEntrevista].map(
+              candidatoJobKey
+            )
+          ).size
         : volumeContratados.length +
           volumeReprovados.length +
           volumeNaoCompareceu.length +
