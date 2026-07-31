@@ -58,7 +58,7 @@ export async function fetchEntrevistaFreeze(): Promise<FreezePayload | null> {
 }
 
 /**
- * Dispara sync com debounce no servidor (~10 min).
+ * Dispara sync com debounce no servidor (~5 min).
  * Fire-and-forget: não bloqueia a UI se falhar (ex.: dev local).
  */
 export function triggerEntrevistaFreezeSync(): void {

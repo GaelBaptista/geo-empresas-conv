@@ -17,12 +17,12 @@ function json(data, status = 200) {
 
 /**
  * GET  → lê o congelamento (Blob do site, persiste entre deploys)
- * POST → dispara sync (com debounce de 10 min) — útil quando alguém abre o app
+ * POST → dispara sync (com debounce de 5 min) — útil quando alguém abre o app
  */
 export default async (req: Request) => {
   try {
     if (req.method === 'POST') {
-      const result = await syncEntrevistaFreeze({ minIntervalMs: 10 * 60 * 1000 });
+      const result = await syncEntrevistaFreeze({ minIntervalMs: 5 * 60 * 1000 });
       const data = await loadFreezeData();
       return json({
         ok: true,

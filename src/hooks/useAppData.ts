@@ -60,6 +60,11 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
   const [minivagasError, setMinivagasError] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
   const focusTokenRef = useRef(0);
+  const companiesRef = useRef(companies);
+  companiesRef.current = companies;
+
+  /** Refresh silencioso do Minivagas + freeze — a cada 5 min com a aba visível. */
+  const MINIVAGAS_REFRESH_MS = 5 * 60 * 1000;
 
   const neighborhoods = useMemo(
     () => buildNeighborhoodsFromCompanies(companies, FORTALEZA_NEIGHBORHOODS),
@@ -237,6 +242,28 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     clearLegacyGeocodeCaches();
     void loadCompanies();
   }, [enabled, loadCompanies]);
+
+  useEffect(() => {
+    if (!enabled || !USE_API) return;
+
+    const refreshMinivagas = () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      const list = companiesRef.current;
+      if (!list.length) return;
+      void loadMinivagasBundle(list)
+        .then((bundle) => {
+          if (!bundle) return;
+          setMinivagas(bundle);
+          setMinivagasError(null);
+        })
+        .catch((err) => {
+          console.warn('Falha no refresh silencioso do Minivagas', err);
+        });
+    };
+
+    const id = window.setInterval(refreshMinivagas, MINIVAGAS_REFRESH_MS);
+    return () => window.clearInterval(id);
+  }, [enabled]);
 
   const handleResetData = useCallback(() => {
     setSelectedCompanyForDossier(null);

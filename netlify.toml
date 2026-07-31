@@ -9,7 +9,7 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Cron também definido no export config da function (*/20 * * * * UTC).
+# Cron também definido no export config da function (*/5 * * * * UTC).
 # Blob do site (entrevista-freeze) NÃO reseta em deploy.
 
 # Variáveis secretas (VITE_PUBLIC_TOKEN / MINIVAGAS_TOKEN) no painel Netlify:
