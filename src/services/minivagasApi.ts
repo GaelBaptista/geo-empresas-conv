@@ -362,6 +362,9 @@ export function buildHiringStatsByCnpj(
   return byCnpj;
 }
 
+/** Mínimo de candidatos enviados para calcular e rankear reputação. */
+export const MIN_ENVIADOS_FOR_REPUTATION = 5;
+
 export function computeReputation(counts: Counts): CompanyReputation {
   const contratados = counts.contratados;
   const reprovados = counts.reprovados;
@@ -370,34 +373,40 @@ export function computeReputation(counts: Counts): CompanyReputation {
   const decididos = contratados + reprovados + naoCompareceu;
   const enviados = decididos + emFunil;
 
-  if (decididos === 0 && enviados === 0) {
+  const emptyRates = {
+    hireRate: null as number | null,
+    rejectRate: null as number | null,
+    noShowRate: null as number | null,
+    score: null as number | null,
+    label: 'Sem dados' as ReputationLabel,
+  };
+
+  // Amostra pequena: conta volume, mas sem taxa/nota (não entra no ranking).
+  if (enviados < MIN_ENVIADOS_FOR_REPUTATION) {
     return {
-      enviados: 0,
-      emFunil: 0,
-      contratados: 0,
-      reprovados: 0,
-      naoCompareceu: 0,
-      decididos: 0,
-      hireRate: null,
-      rejectRate: null,
-      noShowRate: null,
-      score: null,
-      label: 'Sem dados',
+      enviados,
+      emFunil,
+      contratados,
+      reprovados,
+      naoCompareceu,
+      decididos,
+      ...emptyRates,
     };
   }
 
-  const hireRate = decididos > 0 ? contratados / decididos : null;
-  const rejectRate = decididos > 0 ? reprovados / decididos : null;
-  const noShowRate = decididos > 0 ? naoCompareceu / decididos : null;
-  const score = hireRate != null ? Math.round(hireRate * 100) : null;
+  // Taxas sobre candidatos enviados (decididos + em entrevista).
+  const hireRate = contratados / enviados;
+  const rejectRate = reprovados / enviados;
+  const noShowRate = naoCompareceu / enviados;
+  // Reputação = taxa de contratação sobre enviados (0–100).
+  const score = Math.round(hireRate * 100);
 
-  let label: ReputationLabel = 'Sem dados';
-  if (hireRate == null) {
-    label = enviados > 0 ? 'Regular' : 'Sem dados';
-  } else if (hireRate >= 0.4) label = 'Excelente';
+  let label: ReputationLabel;
+  if (hireRate >= 0.4) label = 'Excelente';
   else if (hireRate >= 0.25) label = 'Boa';
   else if (hireRate >= 0.15) label = 'Regular';
   else if (hireRate >= 0.08) label = 'Atenção';
+  else if (decididos === 0) label = 'Regular';
   else label = 'Crítica';
 
   return {
@@ -803,15 +812,18 @@ export function buildReputationRanking(
   index: MinivagasGroupIndex,
   hiringByGroup: Map<string, Counts>,
   options?: {
-    /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 1 = todos com dado. */
+    /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 0 = só o piso de enviados. */
     minDecided?: number;
+    /** Mínimo de candidatos enviados. Padrão: MIN_ENVIADOS_FOR_REPUTATION (5). */
+    minEnviados?: number;
     /** null = lista completa. */
     limit?: number | null;
     /** Contagens reais por CNPJ (não espelho do grupo). */
     statsByCnpj?: Map<string, Counts>;
   }
 ): ReputationRankRow[] {
-  const minDecided = options?.minDecided ?? 1;
+  const minDecided = options?.minDecided ?? 0;
+  const minEnviados = options?.minEnviados ?? MIN_ENVIADOS_FOR_REPUTATION;
   const limit = options?.limit ?? null;
   const companyByCnpj = companyByCnpjMap(companies);
   const statsByCnpj = options?.statsByCnpj;
@@ -819,8 +831,9 @@ export function buildReputationRanking(
   const rows: ReputationRankRow[] = [];
   for (const [groupKey, counts] of hiringByGroup.entries()) {
     const reputation = computeReputation(counts);
-    // Inclui qualquer grupo com movimento (enviados ou resultado)
-    if ((reputation.enviados || 0) < 1) continue;
+    // Só entra com amostra mínima de enviados (evita taxa enviesada com 1–4 casos).
+    if ((reputation.enviados || 0) < minEnviados) continue;
+    if (reputation.hireRate == null) continue;
     if ((reputation.decididos || 0) < minDecided && (reputation.emFunil || 0) === 0) {
       continue;
     }
@@ -860,17 +873,17 @@ export function buildReputationRanking(
 export function reputationCriteria(label: ReputationLabel): string {
   switch (label) {
     case 'Excelente':
-      return 'Taxa de contratação de 40% ou mais';
+      return 'Contratação ≥ 40% dos enviados';
     case 'Boa':
-      return 'Taxa de contratação entre 25% e 39%';
+      return 'Contratação entre 25% e 39% dos enviados';
     case 'Regular':
-      return 'Taxa de contratação entre 15% e 24%';
+      return 'Contratação entre 15% e 24% dos enviados';
     case 'Atenção':
-      return 'Taxa de contratação entre 8% e 14%';
+      return 'Contratação entre 8% e 14% dos enviados';
     case 'Crítica':
-      return 'Taxa de contratação abaixo de 8%';
+      return 'Contratação abaixo de 8% dos enviados';
     default:
-      return 'Ainda sem resultado após entrevista';
+      return 'Menos de 5 candidatos enviados (sem taxa)';
   }
 }
 
@@ -1160,10 +1173,12 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     ),
     topReputation: buildReputationRanking(companies, groupIndex, reputationByGroup, {
       minDecided: 0,
+      minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
       statsByCnpj: reputationStatsByCnpj,
     }),
     topReputationMonth: buildReputationRanking(companies, groupIndex, reputationByGroupMonth, {
       minDecided: 0,
+      minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
       statsByCnpj: reputationStatsByCnpjMonth,
     }),
     matchedObservacoes,

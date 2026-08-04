@@ -58,7 +58,7 @@ export function CompanyReputationCard({
         <Metric label="Em entrevista" value={reputation.emFunil} />
       </div>
 
-      {reputation.decididos > 0 && (
+      {reputation.enviados > 0 && (
         <div className="space-y-1.5">
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] font-medium">
             <span>Contratou {pct(reputation.hireRate)}</span>
@@ -69,21 +69,23 @@ export function CompanyReputationCard({
             <div
               className="h-full bg-sky-500"
               style={{ width: `${hirePct}%` }}
-              title="Contratados"
+              title="Contratados (sobre enviados)"
             />
             <div
               className="h-full bg-rose-500"
               style={{ width: `${rejectPct}%` }}
-              title="Reprovados"
+              title="Reprovados (sobre enviados)"
             />
             <div
               className="h-full bg-amber-500"
               style={{ width: `${noShowPct}%` }}
-              title="Não compareceu"
+              title="Não compareceu (sobre enviados)"
             />
           </div>
           <p className="text-[10px] opacity-70">
-            {reputation.decididos} com resultado · {reputation.emFunil} ainda em entrevista
+            % sobre {reputation.enviados} enviado
+            {reputation.enviados === 1 ? '' : 's'} · {reputation.emFunil} ainda em
+            entrevista · nota = % de contratação
           </p>
         </div>
       )}

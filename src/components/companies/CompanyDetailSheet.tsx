@@ -234,7 +234,7 @@ export function CompanyDetailSheet({
                       minivagasExtras.naoCompareceuMes > 0))) && (
                   <div className="space-y-3">
                     {minivagasExtras.reputation &&
-                      minivagasExtras.reputation.enviados > 0 && (
+                      minivagasExtras.reputation.score != null && (
                         <CompanyReputationCard reputation={minivagasExtras.reputation} />
                       )}
 

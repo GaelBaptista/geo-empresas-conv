@@ -37,7 +37,7 @@ function buildDocDefinition(
 ): TDocumentDefinitions {
   const name = getCompanyDisplayName(company);
   const reputation = minivagasExtras?.reputation;
-  const showMetrics = Boolean(reputation && reputation.enviados > 0);
+  const showMetrics = Boolean(reputation && reputation.score != null);
 
   const content: Content[] = [
     {
@@ -153,15 +153,15 @@ function buildDocDefinition(
           },
           margin: [0, 10, 0, 0] as [number, number, number, number],
         },
-        ...(reputation.decididos > 0
+        ...(reputation.enviados > 0
           ? ([
               {
-                text: `Contratou ${pct(reputation.hireRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)}`,
+                text: `Contratou ${pct(reputation.hireRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)} (sobre enviados)`,
                 style: 'muted',
                 margin: [0, 10, 0, 0] as [number, number, number, number],
               },
               {
-                text: `${reputation.decididos} com resultado · ${reputation.emFunil} ainda em entrevista`,
+                text: `Nota de reputação = % de contratação · ${reputation.emFunil} ainda em entrevista`,
                 style: 'muted',
                 margin: [0, 4, 0, 0] as [number, number, number, number],
               },

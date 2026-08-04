@@ -248,7 +248,7 @@ export function HiringRankPanel({
 
   const listHint =
     view === 'reputation'
-      ? 'Lista completa dos grupos. Taxa = % contratados entre quem já teve resultado. Use a busca e a paginação.'
+      ? 'Só grupos com 5+ candidatos enviados. Taxa = % contratados sobre enviados. Use a busca e a paginação.'
       : view === 'hired'
         ? 'Lista completa · soma de contratações por grupo. Busque e navegue nas páginas.'
         : view === 'rejected'
@@ -268,9 +268,10 @@ export function HiringRankPanel({
             </p>
             {view === 'reputation' ? (
               <p>
-                A <strong>taxa de contratação</strong> mostra, entre quem já teve resultado
-                (contratou, reprovou ou faltou), quantos % foram contratados. Os chips
-                mostram enviados, contratados, reprovados e faltas.
+                Entram só grupos com <strong>5 ou mais candidatos enviados</strong>. A{' '}
+                <strong>taxa de contratação</strong> é o % de contratados sobre os enviados
+                (inclui quem ainda está em entrevista). Os chips mostram enviados, contratados,
+                reprovados e faltas.
               </p>
             ) : (
               <p>
@@ -290,7 +291,8 @@ export function HiringRankPanel({
                   Ranking das empresas
                 </CardTitle>
                 <CardDescription>
-                  Grupo = soma dos CNPJs. Reputação = taxa de contratação após entrevista.
+                  Grupo = soma dos CNPJs. Reputação exige 5+ enviados · taxa = contratados /
+                  enviados.
                 </CardDescription>
               </div>
 
@@ -975,7 +977,7 @@ function ReputationTable({
               </TableCell>
               <TableCell className="hidden md:table-cell align-top py-3">
                 <div className="space-y-2 max-w-sm">
-                  {r.decididos > 0 ? (
+                  {r.enviados > 0 ? (
                     <OutcomeBar hire={hirePct} reject={rejectPct} noShow={noShowPct} />
                   ) : null}
                   <ResultChips
