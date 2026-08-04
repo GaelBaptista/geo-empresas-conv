@@ -12,6 +12,7 @@
 # Cron também definido no export config da function (*/5 * * * * UTC).
 # Blob do site (entrevista-freeze) NÃO reseta em deploy.
 
-# Variáveis secretas (VITE_PUBLIC_TOKEN / MINIVAGAS_TOKEN) no painel Netlify:
-# Site settings → Environment variables → Add a variable
+# Secrets Minivagas — SOMAENTE no painel Netlify (nunca no Git / .env.production):
+#   MINIVAGAS_TOKEN = token da API  (Functions: minivagas-proxy + entrevista-freeze)
+# NÃO defina VITE_PUBLIC_TOKEN em produção — o prefixo VITE_ embute no JS do browser.
 # Depois: Deploys → Trigger deploy → Clear cache and deploy site

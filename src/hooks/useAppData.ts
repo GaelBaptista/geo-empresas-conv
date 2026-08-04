@@ -188,7 +188,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
           if (!bundle) {
             setMinivagas(null);
             setMinivagasError(
-              'Token do Minivagas não configurado. Defina VITE_PUBLIC_TOKEN no .env (ou nas variáveis do deploy) e faça o build de novo.'
+              'Minivagas indisponível. Em dev: VITE_PUBLIC_TOKEN no .env. Em produção: MINIVAGAS_TOKEN no painel Netlify (Function proxy).'
             );
             return;
           }
@@ -200,7 +200,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
           console.warn('Falha ao carregar Minivagas', err);
           setMinivagas(null);
           setMinivagasError(
-            'Não carregou observações/ranking do Minivagas. Verifique VITE_PUBLIC_TOKEN e a conexão com apiminivagas.estagius.com.br.'
+            'Não carregou observações/ranking do Minivagas. Verifique MINIVAGAS_TOKEN (Netlify) ou VITE_PUBLIC_TOKEN (.env local) e a conexão.'
           );
         });
     } catch (e: unknown) {
