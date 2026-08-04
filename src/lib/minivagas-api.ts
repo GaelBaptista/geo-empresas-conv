@@ -1,10 +1,16 @@
 /**
  * Cliente Minivagas — o browser NUNCA envia o token.
- * Em dev: Vite middleware /api/minivagas (token no Node via .env)
- * Em prod: Netlify Function (rewrite) com MINIVAGAS_TOKEN no painel
+ * Dev:  Vite middleware /api/minivagas (token no Node via .env)
+ * Prod: Function Netlify (token só no servidor; path da function evita falha de rewrite)
  */
 
-const PROXY_PATH = '/api/minivagas';
+function proxyUrl(): string {
+  // Em produção no Netlify a Function é a fonte da verdade.
+  if (import.meta.env.PROD) {
+    return '/.netlify/functions/minivagas-proxy';
+  }
+  return '/api/minivagas';
+}
 
 const CACHE_TTL_MS = 30_000;
 
@@ -41,7 +47,7 @@ async function fetchViaProxy<T>(
       qs.set(key, String(value));
     }
   }
-  const res = await fetch(`${PROXY_PATH}?${qs.toString()}`);
+  const res = await fetch(`${proxyUrl()}?${qs.toString()}`);
   if (!res.ok) {
     let detail = '';
     try {

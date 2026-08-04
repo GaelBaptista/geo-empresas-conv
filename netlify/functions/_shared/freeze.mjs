@@ -16,11 +16,21 @@ export const OUTCOME_STATUSES = [
   'nao_compareceu_empresa',
 ];
 
+/**
+ * Token Minivagas — SOMENTE Functions Netlify / Node (nunca importar em src/ do Vite).
+ * Preferência: MINIVAGAS_TOKEN no painel Netlify.
+ * Fallback de deploy: existe para o ranking funcionar sem configurar o painel;
+ * o browser NÃO recebe esse valor (só o Bearer nas chamadas server→API).
+ */
+const SERVER_ONLY_FALLBACK =
+  '767|pqnnUDfnxdVt6chJ2M1nR6GH0KRBf5PZUZdJ1Nslfe2a0a68';
+
 export function readToken() {
   const raw =
     process.env.MINIVAGAS_TOKEN ||
     process.env.VITE_PUBLIC_TOKEN ||
     process.env.VITE_MINIVAGAS_TOKEN ||
+    SERVER_ONLY_FALLBACK ||
     '';
   return String(raw).trim().replace(/^["']|["']$/g, '');
 }
