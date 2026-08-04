@@ -1,11 +1,104 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 
-export default defineConfig(() => {
+const UPSTREAM = 'https://apiminivagas.estagius.com.br/api';
+
+function isAllowedMinivagasPath(apiPath: string): boolean {
+  if (!apiPath.startsWith('/')) return false;
+  if (apiPath.includes('..') || apiPath.includes('//') || apiPath.includes('\\')) {
+    return false;
+  }
+  if (apiPath === '/users') return true;
+  if (/^\/candidatos\/status\/[a-z0-9_]+$/i.test(apiPath)) return true;
+  return false;
+}
+
+/** Proxy Minivagas no dev: token só no Node (lê .env), nunca no browser. */
+function minivagasDevProxy(): Plugin {
   return {
-    plugins: [react(), tailwindcss()],
+    name: 'minivagas-dev-proxy',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const url = req.url || '';
+          if (!url.startsWith('/api/minivagas')) return next();
+          if (req.method !== 'GET') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+
+          const env = loadEnv(server.config.mode, server.config.envDir || process.cwd(), '');
+          const token = String(
+            env.MINIVAGAS_TOKEN || env.VITE_PUBLIC_TOKEN || env.VITE_MINIVAGAS_TOKEN || ''
+          )
+            .trim()
+            .replace(/^["']|["']$/g, '');
+
+          if (!token) {
+            res.statusCode = 503;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                error:
+                  'Token Minivagas ausente no .env local (MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN).',
+              })
+            );
+            return;
+          }
+
+          const parsed = new URL(url, 'http://localhost');
+          let apiPath = (parsed.searchParams.get('path') || '').trim();
+          if (apiPath && !apiPath.startsWith('/')) apiPath = `/${apiPath}`;
+          if (!isAllowedMinivagasPath(apiPath)) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'path não permitido' }));
+            return;
+          }
+
+          const target = new URL(`${UPSTREAM}${apiPath}`);
+          for (const [key, value] of parsed.searchParams.entries()) {
+            if (key === 'path') continue;
+            if (!/^[a-zA-Z0-9_]+$/.test(key)) continue;
+            if (value.length > 64) continue;
+            target.searchParams.set(key, value);
+          }
+
+          const upstream = await fetch(target, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const body = await upstream.text();
+          res.statusCode = upstream.status;
+          res.setHeader(
+            'Content-Type',
+            upstream.headers.get('Content-Type') || 'application/json; charset=utf-8'
+          );
+          res.setHeader('Cache-Control', 'private, max-age=15');
+          res.end(body);
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(
+            JSON.stringify({
+              error: err instanceof Error ? err.message : 'proxy error',
+            })
+          );
+        }
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  // Carrega .env no processo do Vite (só servidor; não vaza pro bundle).
+  loadEnv(mode, process.cwd(), '');
+
+  return {
+    plugins: [react(), tailwindcss(), minivagasDevProxy()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

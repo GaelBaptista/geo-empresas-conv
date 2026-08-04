@@ -188,7 +188,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
           if (!bundle) {
             setMinivagas(null);
             setMinivagasError(
-              'Minivagas indisponível. Em dev: VITE_PUBLIC_TOKEN no .env. Em produção: MINIVAGAS_TOKEN no painel Netlify (Function proxy).'
+              'Ranking Minivagas indisponível no momento. Tente novamente em instantes.'
             );
             return;
           }
@@ -200,7 +200,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
           console.warn('Falha ao carregar Minivagas', err);
           setMinivagas(null);
           setMinivagasError(
-            'Não carregou observações/ranking do Minivagas. Verifique MINIVAGAS_TOKEN (Netlify) ou VITE_PUBLIC_TOKEN (.env local) e a conexão.'
+            'Não carregou observações/ranking do Minivagas. Tente atualizar a página.'
           );
         });
     } catch (e: unknown) {

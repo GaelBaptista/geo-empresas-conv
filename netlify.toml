@@ -12,7 +12,14 @@
 # Cron também definido no export config da function (*/5 * * * * UTC).
 # Blob do site (entrevista-freeze) NÃO reseta em deploy.
 
-# Secrets Minivagas — SOMAENTE no painel Netlify (nunca no Git / .env.production):
-#   MINIVAGAS_TOKEN = token da API  (Functions: minivagas-proxy + entrevista-freeze)
-# NÃO defina VITE_PUBLIC_TOKEN em produção — o prefixo VITE_ embute no JS do browser.
-# Depois: Deploys → Trigger deploy → Clear cache and deploy site
+# Secrets Minivagas — SOMENTE no painel Netlify (nunca no Git):
+#   MINIVAGAS_TOKEN = token da API  (Functions: proxy + freeze)
+# NÃO use VITE_PUBLIC_TOKEN em produção (vai para o JS do browser).
+# Depois: Deploys → Clear cache and deploy site
+
+# Front chama /api/minivagas; Function aplica o Bearer no servidor.
+[[redirects]]
+  from = "/api/minivagas"
+  to = "/.netlify/functions/minivagas-proxy"
+  status = 200
+  force = true

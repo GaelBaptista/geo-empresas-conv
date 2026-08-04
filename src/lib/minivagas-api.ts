@@ -1,26 +1,10 @@
-import axios from 'axios';
-
-const UPSTREAM_BASE = 'https://apiminivagas.estagius.com.br/api';
-const PROXY_PATH = '/.netlify/functions/minivagas-proxy';
-
-function readMinivagasToken(): string {
-  // Só em dev — em produção o token NÃO deve ir no bundle (proxy Netlify).
-  if (!import.meta.env.DEV) return '';
-  const raw =
-    (import.meta.env.VITE_PUBLIC_TOKEN as string | undefined) ||
-    (import.meta.env.VITE_MINIVAGAS_TOKEN as string | undefined) ||
-    '';
-  return String(raw).trim().replace(/^["']|["']$/g, '');
-}
-
 /**
- * Em produção o token fica só no Netlify (Function proxy).
- * Em dev local usa VITE_PUBLIC_TOKEN no .env e chama a API direto.
+ * Cliente Minivagas — o browser NUNCA envia o token.
+ * Em dev: Vite middleware /api/minivagas (token no Node via .env)
+ * Em prod: Netlify Function (rewrite) com MINIVAGAS_TOKEN no painel
  */
-function useServerProxy(): boolean {
-  if (import.meta.env.PROD) return true;
-  return !readMinivagasToken();
-}
+
+const PROXY_PATH = '/api/minivagas';
 
 const CACHE_TTL_MS = 30_000;
 
@@ -36,16 +20,13 @@ function getCacheKey(path: string, params?: Record<string, unknown>) {
   return `${path}:${JSON.stringify(params || {})}`;
 }
 
+/** Sempre tenta o proxy same-origin (token escondido no servidor). */
 export function isMinivagasConfigured(): boolean {
-  // Produção: proxy no servidor (configurado com MINIVAGAS_TOKEN no painel).
-  if (import.meta.env.PROD) return true;
-  // Dev: precisa de token no .env (ou netlify dev com env do servidor).
-  return Boolean(readMinivagasToken());
+  return true;
 }
 
 function normalizeApiPath(path: string): string {
-  const p = path.startsWith('/') ? path : `/${path}`;
-  return p;
+  return path.startsWith('/') ? path : `/${path}`;
 }
 
 async function fetchViaProxy<T>(
@@ -74,26 +55,6 @@ async function fetchViaProxy<T>(
   return (await res.json()) as T;
 }
 
-async function fetchDirect<T>(
-  path: string,
-  params?: Record<string, unknown>
-): Promise<T> {
-  const TOKEN = readMinivagasToken();
-  if (!TOKEN) {
-    throw new Error(
-      'Token Minivagas não configurado. Defina VITE_PUBLIC_TOKEN no .env local.'
-    );
-  }
-
-  const client = axios.create({
-    baseURL: UPSTREAM_BASE,
-    headers: { Authorization: `Bearer ${TOKEN}` },
-  });
-
-  const response = await client.get<T>(path, { params });
-  return response.data;
-}
-
 export async function getEstagius<T>(
   path: string,
   params?: Record<string, unknown>
@@ -110,10 +71,7 @@ export async function getEstagius<T>(
     return cached.promise as Promise<T>;
   }
 
-  const promise = (useServerProxy()
-    ? fetchViaProxy<T>(path, params)
-    : fetchDirect<T>(path, params)
-  )
+  const promise = fetchViaProxy<T>(path, params)
     .then((value) => {
       responseCache.set(key, {
         value,
