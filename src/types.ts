@@ -48,6 +48,10 @@ export interface Company {
   /** Contratos/estagiários ativos (meta da API) */
   activeTrainees?: number;
   inactiveTrainees?: number;
+  /** Quantidade de CLT (amount_clt da API Estagius) */
+  amountClt?: number | null;
+  /** Cota de estagiários permitida com base no CLT */
+  internQuota?: number | null;
   city?: string;
   state?: string;
   /** Campos brutos para geocode de rua em segundo plano */

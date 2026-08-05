@@ -16,11 +16,12 @@ import {
   filterByGroup,
   filterByInterns,
   filterByState,
+  formatStateLabel,
   getCompanyDisplayName,
+  getCompanyState,
   listCities,
   listStates,
   normalizeCity,
-  pickDefaultCity,
   type InternFilter,
 } from '@/lib/company';
 import { normalizeMatchText, formatScheduleDate, googleMapsCompanyUrl } from '@/lib/schedule-match';
@@ -132,6 +133,25 @@ function shortCompanyLabel(displayName: string): string {
   return displayName.split(/\s+/).slice(0, 4).join(' ');
 }
 
+/** Afasta o mapa para enxergar todas as empresas do filtro atual. */
+function fitMapToCompanies(
+  map: L.Map,
+  list: { lat: number; lng: number }[],
+  opts?: { maxZoom?: number }
+) {
+  if (list.length === 0) return;
+  if (list.length === 1) {
+    map.flyTo([list[0].lat, list[0].lng], 13, { duration: 0.6 });
+    return;
+  }
+  const bounds = L.latLngBounds(list.map((c) => [c.lat, c.lng] as [number, number]));
+  map.flyToBounds(bounds, {
+    padding: [48, 48],
+    maxZoom: opts?.maxZoom ?? 11,
+    duration: 0.75,
+  });
+}
+
 function buildCompanyPopupHtml(
   company: Company,
   selectedCity: string,
@@ -140,59 +160,95 @@ function buildCompanyPopupHtml(
 ): string {
   const displayName = getCompanyDisplayName(company);
   const active = company.activeTrainees ?? 0;
+  const clt =
+    company.amountClt != null ? company.amountClt.toLocaleString('pt-BR') : '—';
+  const quota =
+    company.internQuota != null ? company.internQuota.toLocaleString('pt-BR') : '—';
+  const quotaHint =
+    company.amountClt != null && company.amountClt >= 26
+      ? '20% do CLT'
+      : company.internQuota != null
+        ? 'pela faixa CLT'
+        : 'sem dados CLT';
   const visitObs = (nextVisit?.observations || nextVisit?.description || '').trim();
+  const place = [company.city || selectedCity, company.neighborhoodName]
+    .filter(Boolean)
+    .join(' · ');
 
   return `
-    <div style="min-width:250px">
-      <div style="padding-bottom:10px;border-bottom:1px solid #e2e8f0;">
-        <span style="display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:#f1f5f9;color:#334155;margin-bottom:4px;">
-          ${escapeHtml(company.city || selectedCity)} · ${escapeHtml(company.neighborhoodName)}
-        </span>
-        <h4 style="margin:0;font-size:13px;font-weight:700;color:#0f172a;line-height:1.2;">${escapeHtml(displayName)}</h4>
+    <div class="company-popup">
+      <div class="cp-header">
+        <span class="cp-badge">${escapeHtml(place)}</span>
+        <h4 class="cp-title">${escapeHtml(displayName)}</h4>
         ${
           company.tradeName
-            ? `<p style="margin:2px 0 0;font-size:11px;color:#64748b;">Razão social: ${escapeHtml(company.name)}</p>`
+            ? `<p class="cp-legal">Razão social: ${escapeHtml(company.name)}</p>`
+            : ''
+        }
+        ${
+          company.groupName
+            ? `<p class="cp-group">Grupo · ${escapeHtml(company.groupName)}</p>`
             : ''
         }
       </div>
-      <div style="padding:10px 0;font-size:12px;color:#475569;">
-        <p style="margin:0 0 6px;"><strong>Estagiários ativos:</strong> ${active}</p>
-        ${
-          company.groupName
-            ? `<p style="margin:0 0 6px;"><strong>Grupo:</strong> ${escapeHtml(company.groupName)}</p>`
-            : ''
-        }
-        <p style="margin:0 0 4px;"><strong>Endereço:</strong> ${escapeHtml(company.address)}</p>
+
+      <div class="cp-metrics" role="group" aria-label="Indicadores">
+        <div class="cp-metric cp-metric--green">
+          <span class="cp-metric-label">Ativos</span>
+          <span class="cp-metric-value">${active}</span>
+          <span class="cp-metric-hint">estagiários</span>
+        </div>
+        <div class="cp-metric cp-metric--sky">
+          <span class="cp-metric-label">CLT</span>
+          <span class="cp-metric-value">${escapeHtml(clt)}</span>
+          <span class="cp-metric-hint">funcionários</span>
+        </div>
+        <div class="cp-metric cp-metric--violet">
+          <span class="cp-metric-label">Cota</span>
+          <span class="cp-metric-value">${escapeHtml(quota)}</span>
+          <span class="cp-metric-hint">${escapeHtml(quotaHint)}</span>
+        </div>
+      </div>
+
+      <div class="cp-body">
+        <div class="cp-row">
+          <span class="cp-row-label">Endereço</span>
+          <span class="cp-row-value">${escapeHtml(company.address)}</span>
+        </div>
         ${
           company.phone && company.phone !== '—'
-            ? `<p style="margin:0 0 6px;"><strong>Telefone:</strong> ${escapeHtml(company.phone)}</p>`
+            ? `<div class="cp-row">
+                <span class="cp-row-label">Telefone</span>
+                <span class="cp-row-value">${escapeHtml(company.phone)}</span>
+              </div>`
             : ''
         }
         ${
           nextVisit
-            ? `<div style="margin-top:8px;padding:8px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;">
-                <p style="margin:0 0 2px;font-size:10px;font-weight:700;color:#b45309;text-transform:uppercase;">Visita agendada</p>
-                <p style="margin:0;font-size:12px;color:#92400e;font-weight:600;">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
-                <p style="margin:4px 0 0;font-size:11px;color:#78350f;">${escapeHtml(nextVisit.title)}</p>
+            ? `<div class="cp-visit">
+                <p class="cp-visit-kicker">Visita agendada</p>
+                <p class="cp-visit-date">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
+                <p class="cp-visit-title">${escapeHtml(nextVisit.title)}</p>
                 ${
                   visitObs
-                    ? `<p style="margin:6px 0 0;font-size:11px;color:#78350f;line-height:1.35;"><strong>Observações:</strong> ${escapeHtml(visitObs)}</p>`
+                    ? `<p class="cp-visit-obs"><strong>Obs.</strong> ${escapeHtml(visitObs)}</p>`
                     : ''
                 }
               </div>`
             : ''
         }
       </div>
-      <div style="display:flex;gap:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
-        <button type="button" data-action="details" style="flex:1;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;">
+
+      <div class="cp-actions">
+        <button type="button" class="cp-btn cp-btn--primary" data-action="details">
           Detalhes
         </button>
-        <a href="${escapeHtml(mapsUrl)}" target="_blank" rel="noreferrer" style="flex:1;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;text-align:center;text-decoration:none;">
+        <a class="cp-btn cp-btn--ghost" href="${escapeHtml(mapsUrl)}" target="_blank" rel="noreferrer">
           Google Maps
         </a>
       </div>
-      <p style="margin:8px 0 0;font-size:10px;line-height:1.35;color:#64748b;">
-        O pin no mapa é aproximado. Use o Google Maps para a localização exata pelo endereço.
+      <p class="cp-footnote">
+        O pin no mapa é aproximado. Use o Google Maps para a localização exata.
       </p>
     </div>
   `;
@@ -236,7 +292,7 @@ export function MapView({
   const didAutoCityFromGpsRef = useRef(false);
   const userLocationRef = useRef(userLocation);
   userLocationRef.current = userLocation;
-  const selectedCityRef = useRef(DEFAULT_MAP_CITY);
+  const selectedCityRef = useRef<string | 'ALL'>('ALL');
   const getNextVisitRef = useRef(getNextVisitForCompany);
   getNextVisitRef.current = getNextVisitForCompany;
   const companiesByIdRef = useRef<Map<string, Company>>(new Map());
@@ -244,10 +300,14 @@ export function MapView({
   const [internFilter, setInternFilter] = useState<InternFilter>('with_active');
   const [selectedGroupId, setSelectedGroupId] = useState<number | 'ALL'>('ALL');
   const [selectedState, setSelectedState] = useState<string | 'ALL'>('ALL');
+  /** Cidade: 'ALL' = todas as cidades do estado (ou do Brasil se estado = ALL) */
+  const [selectedCity, setSelectedCity] = useState<string | 'ALL'>('ALL');
   const [nameQuery, setNameQuery] = useState('');
   const deferredNameQuery = useDeferredValue(nameQuery);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(true);
+
+  selectedCityRef.current = selectedCity;
 
   const filteredByGroup = useMemo(
     () => filterByGroup(companies, selectedGroupId),
@@ -270,13 +330,18 @@ export function MapView({
     });
   }, [filteredByInterns, deferredNameQuery]);
 
-  const states = useMemo(() => listStates(filteredByName), [filteredByName]);
+  // Lista de estados SEMPRE de todas as empresas do grupo (não some por filtro de estagiário)
+  const states = useMemo(() => listStates(filteredByGroup), [filteredByGroup]);
 
   useEffect(() => {
     if (selectedState === 'ALL') return;
     const stillExists = states.some((s) => s === selectedState);
-    if (!stillExists) setSelectedState('ALL');
-  }, [states, selectedState]);
+    if (!stillExists) {
+      setSelectedState('ALL');
+      setSelectedCity('ALL');
+      onSelectNeighborhood('ALL');
+    }
+  }, [states, selectedState, onSelectNeighborhood]);
 
   const filteredByState = useMemo(
     () => filterByState(filteredByName, selectedState),
@@ -284,40 +349,43 @@ export function MapView({
   );
 
   const cities = useMemo(() => listCities(filteredByState), [filteredByState]);
-  const [selectedCity, setSelectedCity] = useState(DEFAULT_MAP_CITY);
-  const didInitCityRef = useRef(false);
-  selectedCityRef.current = selectedCity;
 
+  // Cidade selecionada saiu da lista (troca de estado etc.) → Volta para "Todas"
   useEffect(() => {
-    if (cities.length === 0) return;
-
-    if (!didInitCityRef.current) {
-      didInitCityRef.current = true;
-      setSelectedCity(pickDefaultCity(cities));
+    if (selectedCity === 'ALL') return;
+    if (cities.length === 0) {
+      setSelectedCity('ALL');
+      onSelectNeighborhood('ALL');
       return;
     }
-
     const stillExists = cities.some((c) => normalizeCity(c) === normalizeCity(selectedCity));
     if (!stillExists) {
-      setSelectedCity(pickDefaultCity(cities));
+      setSelectedCity('ALL');
       onSelectNeighborhood('ALL');
     }
   }, [cities, selectedCity, onSelectNeighborhood]);
+
+  // Sem cidade específica, bairro não se aplica
+  useEffect(() => {
+    if (selectedCity === 'ALL' && selectedNeighborhoodId !== 'ALL') {
+      onSelectNeighborhood('ALL');
+    }
+  }, [selectedCity, selectedNeighborhoodId, onSelectNeighborhood]);
 
   // Sync cidade/filtros ao focar empresa (Ver no mapa) — garante pin visível
   useEffect(() => {
     if (!focusMapRequest) return;
     const company = companies.find((c) => c.id === focusMapRequest.companyId);
     if (!company) return;
-    const city = company.city || DEFAULT_MAP_CITY;
-    if (normalizeCity(city) !== normalizeCity(selectedCity)) {
-      setSelectedCity(city);
-    }
+    const st = getCompanyState(company);
+    if (st && st !== '—') setSelectedState(st);
+    const city = company.city?.trim() || DEFAULT_MAP_CITY;
+    setSelectedCity(city);
     setNameQuery('');
     setInternFilter('all');
     setSelectedGroupId('ALL');
-    setSelectedState('ALL');
-  }, [focusMapRequest, companies, selectedCity]);
+    onSelectNeighborhood('ALL');
+  }, [focusMapRequest, companies, onSelectNeighborhood]);
 
   const companiesInCity = useMemo(
     () => filterByCity(filteredByState, selectedCity),
@@ -325,6 +393,9 @@ export function MapView({
   );
 
   const neighborhoodsInCity = useMemo(() => {
+    // Bairro só faz sentido com uma cidade específica
+    if (selectedCity === 'ALL') return [];
+
     const cityKey = normalizeCity(selectedCity);
     return neighborhoods
       .filter((n) => normalizeCity(n.city) === cityKey)
@@ -340,19 +411,13 @@ export function MapView({
     return companiesInCity.filter((c) => c.neighborhoodId === selectedNeighborhoodId);
   }, [companiesInCity, selectedNeighborhoodId]);
 
-  const withActiveInCity = useMemo(
-    () =>
-      filterByCity(filterByState(filteredByGroup, selectedState), selectedCity).filter(
-        (c) => (c.activeTrainees ?? 0) > 0
-      ).length,
-    [filteredByGroup, selectedState, selectedCity]
+  const withActiveInView = useMemo(
+    () => companiesInCity.filter((c) => (c.activeTrainees ?? 0) > 0).length,
+    [companiesInCity]
   );
-  const withoutActiveInCity = useMemo(
-    () =>
-      filterByCity(filterByState(filteredByGroup, selectedState), selectedCity).filter(
-        (c) => (c.activeTrainees ?? 0) === 0
-      ).length,
-    [filteredByGroup, selectedState, selectedCity]
+  const withoutActiveInView = useMemo(
+    () => companiesInCity.filter((c) => (c.activeTrainees ?? 0) === 0).length,
+    [companiesInCity]
   );
 
   const groupOptions = useMemo(
@@ -376,7 +441,10 @@ export function MapView({
       ? 'Todos os grupos'
       : groups.find((g) => g.id === selectedGroupId)?.label || 'Grupo';
 
-  const selectedStateLabel = selectedState === 'ALL' ? 'Todos os estados' : selectedState;
+  const selectedStateLabel =
+    selectedState === 'ALL' ? 'Todos os estados' : formatStateLabel(selectedState);
+  const selectedCityLabel =
+    selectedCity === 'ALL' ? 'Todas as cidades' : selectedCity;
 
   const stateOptions = useMemo(
     () => [
@@ -387,7 +455,7 @@ export function MapView({
       },
       ...states.map((state) => ({
         value: state,
-        label: state,
+        label: formatStateLabel(state),
         hint: String(filterByState(filteredByName, state).length),
       })),
     ],
@@ -395,12 +463,18 @@ export function MapView({
   );
 
   const cityOptions = useMemo(
-    () =>
-      cities.map((city) => ({
+    () => [
+      {
+        value: 'ALL',
+        label: 'Todas as cidades',
+        hint: String(filteredByState.length),
+      },
+      ...cities.map((city) => ({
         value: city,
         label: city,
         hint: String(filterByCity(filteredByState, city).length),
       })),
+    ],
     [cities, filteredByState]
   );
 
@@ -432,12 +506,20 @@ export function MapView({
         ? 'Sem estagiários'
         : 'Todas';
 
+  const mapPlaceLabel =
+    selectedNeighborhoodId !== 'ALL'
+      ? selectedNeighborhoodLabel
+      : selectedCity === 'ALL'
+        ? selectedState === 'ALL'
+          ? 'Brasil (todas)'
+          : `${selectedStateLabel} · todas as cidades`
+        : selectedCityLabel;
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
-      center: [-3.7327, -38.527],
-      zoom: 13,
+      center: [-14.235, -51.9253], // centro aproximado do Brasil
+      zoom: 4,
       zoomControl: false,
       preferCanvas: true,
       fadeAnimation: false,
@@ -516,9 +598,22 @@ export function MapView({
       }
     }
 
-    const center = cityCenter(companiesInCity);
-    map.flyTo(center, companiesInCity.length > 0 ? 12.5 : 11, { duration: 0.55 });
-  }, [selectedNeighborhoodId, neighborhoods, selectedCity, companiesInCity]);
+    // Todas as cidades do estado (ou visão ampla): afasta e encaixa os pins
+    if (selectedCity === 'ALL') {
+      fitMapToCompanies(map, companiesInCity, {
+        maxZoom: selectedState === 'ALL' ? 5 : 10,
+      });
+      return;
+    }
+
+    // Uma cidade: centraliza e aproxima um pouco
+    if (companiesInCity.length > 8) {
+      fitMapToCompanies(map, companiesInCity, { maxZoom: 13 });
+    } else {
+      const center = cityCenter(companiesInCity);
+      map.flyTo(center, companiesInCity.length > 0 ? 12.5 : 11, { duration: 0.55 });
+    }
+  }, [selectedNeighborhoodId, neighborhoods, selectedCity, selectedState, companiesInCity]);
 
   // Ao definir localização: seleciona a CIDADE e centraliza nela (não no ponto GPS exato)
   useEffect(() => {
@@ -527,11 +622,10 @@ export function MapView({
     didAutoCityFromGpsRef.current = true;
 
     const city = resolveMapCityForLocation(filteredByState, userLocation, locationSource);
-    if (normalizeCity(city) !== normalizeCity(selectedCity)) {
+    if (selectedCity === 'ALL' || normalizeCity(city) !== normalizeCity(selectedCity)) {
       setSelectedCity(city);
       onSelectNeighborhood('ALL');
     }
-    // O flyTo da cidade acontece no effect de selectedCity / companiesInCity
   }, [userLocation, locationReady, locationSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Marcador só quando GPS real (cidade padrão Fortaleza não precisa de pin “falso”)
@@ -746,51 +840,13 @@ export function MapView({
   }, [focusMapRequest, companies, visibleCompanies, onFocusConsumed]);
 
   const filterPanel = (
-    <div className="space-y-5">
-      <section className="rounded-xl border border-border/70 bg-muted/30 p-3 space-y-2">
-        <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Sua localização
-        </Label>
-        <Button
-          type="button"
-          variant={usingGps ? 'secondary' : 'default'}
-          className="w-full justify-start"
-          disabled={locationRequesting}
-          onClick={() => {
-            didAutoCityFromGpsRef.current = false;
-            requestLocation();
-          }}
-        >
-          {locationRequesting ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <LocateFixed className="size-4" />
-          )}
-          {usingGps ? 'Atualizar cidade' : 'Detectar minha cidade'}
-        </Button>
-        {usingGps ? (
-          <p className="text-[11px] text-sky-700 dark:text-sky-300">
-            Cidade detectada pela sua região
-          </p>
-        ) : (
-          <p className="text-[11px] text-muted-foreground">
-            Padrão: Fortaleza · toque para detectar a sua
-          </p>
-        )}
-        {locationError && !usingGps && (
-          <p className="text-[11px] text-muted-foreground">{locationError}</p>
-        )}
-      </section>
-
+    <div className="space-y-4">
       <section className="space-y-2">
-        <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Buscar empresa
-        </Label>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             className="pl-9 pr-9 bg-background"
-            placeholder="Nome fantasia ou razão social..."
+            placeholder="Buscar empresa..."
             value={nameQuery}
             onChange={(e) => setNameQuery(e.target.value)}
           />
@@ -805,6 +861,26 @@ export function MapView({
             </button>
           )}
         </div>
+        <Button
+          type="button"
+          variant={usingGps ? 'secondary' : 'outline'}
+          className="w-full justify-start gap-2"
+          disabled={locationRequesting}
+          onClick={() => {
+            didAutoCityFromGpsRef.current = false;
+            requestLocation();
+          }}
+        >
+          {locationRequesting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <LocateFixed className="size-4" />
+          )}
+          {usingGps ? 'Atualizar minha cidade' : 'Detectar minha cidade'}
+        </Button>
+        {locationError && !usingGps && (
+          <p className="text-[11px] text-muted-foreground">{locationError}</p>
+        )}
       </section>
 
       <section className="space-y-2">
@@ -830,13 +906,13 @@ export function MapView({
                   onSelectNeighborhood('ALL');
                 }}
                 className={cn(
-                  'flex flex-col items-center gap-1 rounded-lg px-2 py-2.5 text-[11px] font-semibold transition cursor-pointer',
+                  'flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-semibold transition cursor-pointer',
                   active
                     ? 'bg-card text-foreground shadow-sm border border-border/60'
                     : 'text-muted-foreground hover:text-foreground hover:bg-background/60'
                 )}
               >
-                <Icon className="size-3.5" />
+                <Icon className="size-3.5 shrink-0" />
                 {item.label}
               </button>
             );
@@ -846,22 +922,8 @@ export function MapView({
 
       <section className="rounded-xl border border-border/70 bg-background p-3 space-y-3">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Região e grupo
+          Local
         </p>
-
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Grupo</Label>
-          <SearchableSelect
-            value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
-            options={groupOptions}
-            placeholder="Escolher grupo"
-            searchPlaceholder="Buscar grupo..."
-            onChange={(value) => {
-              setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
-              onSelectNeighborhood('ALL');
-            }}
-          />
-        </div>
 
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Estado</Label>
@@ -872,6 +934,8 @@ export function MapView({
             searchPlaceholder="Buscar estado..."
             onChange={(value) => {
               setSelectedState(value === 'ALL' ? 'ALL' : value);
+              // Estado → todas as cidades, sem bairro, mapa afasta
+              setSelectedCity('ALL');
               onSelectNeighborhood('ALL');
             }}
           />
@@ -885,20 +949,36 @@ export function MapView({
             placeholder="Escolher cidade"
             searchPlaceholder="Buscar cidade..."
             onChange={(city) => {
-              setSelectedCity(city);
+              setSelectedCity(city === 'ALL' ? 'ALL' : city);
               onSelectNeighborhood('ALL');
             }}
           />
         </div>
 
+        {selectedCity !== 'ALL' && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Bairro</Label>
+            <SearchableSelect
+              value={selectedNeighborhoodId}
+              options={neighborhoodOptions}
+              placeholder="Escolher bairro"
+              searchPlaceholder="Buscar bairro..."
+              onChange={onSelectNeighborhood}
+            />
+          </div>
+        )}
+
         <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">Bairro</Label>
+          <Label className="text-xs text-muted-foreground">Grupo (opcional)</Label>
           <SearchableSelect
-            value={selectedNeighborhoodId}
-            options={neighborhoodOptions}
-            placeholder="Escolher bairro"
-            searchPlaceholder="Buscar bairro..."
-            onChange={onSelectNeighborhood}
+            value={selectedGroupId === 'ALL' ? 'ALL' : String(selectedGroupId)}
+            options={groupOptions}
+            placeholder="Escolher grupo"
+            searchPlaceholder="Buscar grupo..."
+            onChange={(value) => {
+              setSelectedGroupId(value === 'ALL' ? 'ALL' : Number(value));
+              onSelectNeighborhood('ALL');
+            }}
           />
         </div>
       </section>
@@ -912,14 +992,14 @@ export function MapView({
         </div>
         <div className="rounded-xl border border-emerald-200/70 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-800/40 px-2 py-2.5">
           <p className="text-base font-bold text-emerald-700 dark:text-emerald-300 leading-none">
-            {withActiveInCity}
+            {withActiveInView}
           </p>
           <p className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80 mt-1">
             com ativos
           </p>
         </div>
         <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2.5">
-          <p className="text-base font-bold leading-none">{withoutActiveInCity}</p>
+          <p className="text-base font-bold leading-none">{withoutActiveInView}</p>
           <p className="text-[10px] text-muted-foreground mt-1">sem ativos</p>
         </div>
       </section>
@@ -937,7 +1017,12 @@ export function MapView({
           </h2>
           <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
             {nameQuery.trim() ? `“${nameQuery.trim()}” · ` : ''}
-            {internLabel} · {selectedGroupLabel} · {selectedStateLabel} · {selectedCity}
+            {internLabel}
+            {selectedGroupId !== 'ALL' ? ` · ${selectedGroupLabel}` : ''}
+            {' · '}
+            {selectedStateLabel}
+            {' · '}
+            {selectedCityLabel}
             {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
           </p>
         </div>
@@ -1014,8 +1099,7 @@ export function MapView({
               className="shadow-md bg-card/95 backdrop-blur border px-3 py-1.5 truncate"
             >
               <MapPin className="size-3.5 text-primary mr-1 shrink-0" />
-              {selectedCity}
-              {selectedNeighborhoodId !== 'ALL' ? ` · ${selectedNeighborhoodLabel}` : ''}
+              {mapPlaceLabel}
             </Badge>
             <div className="flex items-center gap-1.5 rounded-full border bg-card/95 backdrop-blur px-2.5 py-1 shadow-md text-[10px] font-medium text-muted-foreground">
               <span className="inline-flex items-center gap-1">

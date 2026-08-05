@@ -6,7 +6,7 @@ import {
   resolveCoordinatesFast,
   slugifyNeighborhood,
 } from '@/lib/geocode';
-import { getCompanyCity, isValidNeighborhoodName } from '@/lib/company';
+import { getCompanyCity, isValidNeighborhoodName, parseAmountClt, computeInternQuota } from '@/lib/company';
 import type { ApiCompaniesResponse, ApiCompany } from '@/types/api';
 import type { Company, CompanyStatus, Neighborhood } from '@/types';
 
@@ -100,6 +100,8 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
 
   const activeTrainees = Number(apiCompany.__meta__?.qtd_contracts_actives ?? 0);
   const inactiveTrainees = Number(apiCompany.__meta__?.qtd_contracts_inactives ?? 0);
+  const amountClt = parseAmountClt(apiCompany.amount_clt);
+  const internQuota = computeInternQuota(amountClt);
   const fantasy = apiCompany.fantasy_name?.trim() || undefined;
 
   return {
@@ -124,6 +126,8 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
     totalVisits: 0,
     activeTrainees,
     inactiveTrainees,
+    amountClt,
+    internQuota,
     city: cityLabel,
     state: apiCompany.state?.trim() || undefined,
     streetAddress: apiCompany.address,

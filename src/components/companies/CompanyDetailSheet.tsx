@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { MapPin, Phone, Mail, User, ClipboardList, Calendar, ExternalLink, Navigation, StickyNote, ThumbsDown, Building2, FileDown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { MapPin, Phone, Mail, StickyNote, ThumbsDown, Building2, FileDown, CheckCircle2, AlertCircle, Loader2, ExternalLink, Navigation } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -15,13 +15,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatusBadge } from '@/components/companies/StatusBadge';
 import { CompanyReputationCard } from '@/components/companies/CompanyReputationCard';
+import { CompanyVisitHistory } from '@/components/companies/CompanyVisitHistory';
 import { getCompanyDisplayName } from '@/lib/company';
 import { exportCompanyDetailPdf } from '@/lib/company-pdf';
-import {
-  formatScheduleDate,
-  googleMapsCompanyUrl,
-  isUpcomingSchedule,
-} from '@/lib/schedule-match';
+import { googleMapsCompanyUrl } from '@/lib/schedule-match';
 import type { CompanyMinivagasExtras } from '@/services/minivagasApi';
 import type { Company, ScheduleItem } from '@/types';
 
@@ -54,11 +51,10 @@ export function CompanyDetailSheet({
     return () => window.clearTimeout(t);
   }, [exportStatus]);
 
-  const companySchedules = company
-    ? schedules
-        .filter((s) => s.isVisit && s.matchedCompanyId === company.id)
-        .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
-    : [];
+  const visitCount = useMemo(() => {
+    if (!company) return 0;
+    return schedules.filter((s) => s.isVisit && s.matchedCompanyId === company.id).length;
+  }, [company, schedules]);
 
   const handleExportPdf = async () => {
     if (!company || exportStatus === 'loading') return;
@@ -184,7 +180,7 @@ export function CompanyDetailSheet({
                       )}
                       <InfoField
                         label="Visitas na agenda"
-                        value={String(companySchedules.length)}
+                        value={String(visitCount)}
                         emphasize
                       />
                       <div className="sm:col-span-2 space-y-1.5">
@@ -199,7 +195,10 @@ export function CompanyDetailSheet({
                         </p>
                       </div>
                     </div>
-                    {(company.activeTrainees != null || company.inactiveTrainees != null) && (
+                    {(company.activeTrainees != null ||
+                      company.inactiveTrainees != null ||
+                      company.amountClt != null ||
+                      company.internQuota != null) && (
                       <>
                         <Separator />
                         <div className="grid grid-cols-2 gap-2">
@@ -216,6 +215,31 @@ export function CompanyDetailSheet({
                             <p className="text-lg font-bold tabular-nums">
                               {company.inactiveTrainees ?? 0}
                             </p>
+                          </div>
+                          <div className="rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200/60 dark:border-sky-800/40 px-3 py-2.5">
+                            <p className="text-[11px] text-sky-800/80 dark:text-sky-200/80">
+                              Funcionários CLT
+                            </p>
+                            <p className="text-lg font-bold tabular-nums text-sky-800 dark:text-sky-100">
+                              {company.amountClt != null
+                                ? company.amountClt.toLocaleString('pt-BR')
+                                : '—'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl bg-violet-50 dark:bg-violet-950/40 border border-violet-200/60 dark:border-violet-800/40 px-3 py-2.5">
+                            <p className="text-[11px] text-violet-800/80 dark:text-violet-200/80">
+                              Cota de estagiários
+                            </p>
+                            <p className="text-lg font-bold tabular-nums text-violet-800 dark:text-violet-100">
+                              {company.internQuota != null
+                                ? company.internQuota.toLocaleString('pt-BR')
+                                : '—'}
+                            </p>
+                            {company.amountClt != null && company.amountClt >= 26 ? (
+                              <p className="text-[10px] text-violet-700/70 dark:text-violet-300/70 mt-0.5">
+                                20% do CLT
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       </>
@@ -290,71 +314,7 @@ export function CompanyDetailSheet({
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <ClipboardList className="size-4 text-primary" />
-                      Agenda de visitas
-                    </h3>
-                    <span className="text-xs text-muted-foreground">
-                      {companySchedules.length} item(ns)
-                    </span>
-                  </div>
-
-                  {companySchedules.length === 0 ? (
-                    <div className="rounded-xl border border-dashed p-8 text-center space-y-1">
-                      <Calendar className="size-6 mx-auto text-muted-foreground mb-2" />
-                      <p className="font-medium text-sm">Nenhuma visita na agenda</p>
-                      <p className="text-xs text-muted-foreground">
-                        Quando houver visita agendada, ela aparece aqui.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {companySchedules.map((item) => (
-                        <div
-                          key={item.id}
-                          className={`rounded-xl border p-4 space-y-2 ${
-                            isUpcomingSchedule(item)
-                              ? 'bg-card border-border border-l-[3px] border-l-primary'
-                              : 'bg-card border-border'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="space-y-1 min-w-0">
-                              <div className="flex gap-1.5 flex-wrap">
-                                <Badge variant="warning">Visita</Badge>
-                                <Badge variant="outline">{item.status}</Badge>
-                              </div>
-                              <h4 className="font-semibold text-sm leading-snug">{item.title}</h4>
-                            </div>
-                            <span className="text-xs text-muted-foreground shrink-0">
-                              {formatScheduleDate(item.startsAt)}
-                            </span>
-                          </div>
-                          {item.responsibleName && (
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <User className="size-3.5" />
-                              {item.responsibleName}
-                            </p>
-                          )}
-                          {(item.observations || item.description) &&
-                            (item.observations || item.description) !== item.title && (
-                              <div className="rounded-lg border border-border/80 bg-muted/40 dark:bg-muted/25 p-2.5 space-y-1">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-                                  <StickyNote className="size-3 text-primary" />
-                                  Observações da agenda
-                                </p>
-                                <p className="text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                                  {item.observations || item.description}
-                                </p>
-                              </div>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <CompanyVisitHistory schedules={schedules} companyId={company.id} />
               </div>
             </ScrollArea>
           </>

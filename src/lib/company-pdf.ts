@@ -87,6 +87,19 @@ function buildDocDefinition(
           ],
           columnGap: 16,
         },
+        {
+          columns: [
+            field(
+              'Funcionários CLT',
+              company.amountClt != null ? String(company.amountClt) : '—'
+            ),
+            field(
+              'Cota de estagiários',
+              company.internQuota != null ? String(company.internQuota) : '—'
+            ),
+          ],
+          columnGap: 16,
+        },
       ],
       style: 'card',
       margin: [0, 0, 0, 12] as [number, number, number, number],

@@ -75,53 +75,181 @@ export function normalizeState(state: string | null | undefined): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+}
+
+/** Nome por extenso → UF (API às vezes manda "Pernambuco", "SP", "Ceará"...). */
+const STATE_NAME_TO_UF: Record<string, string> = {
+  AC: 'AC',
+  ACRE: 'AC',
+  AL: 'AL',
+  ALAGOAS: 'AL',
+  AP: 'AP',
+  AMAPA: 'AP',
+  AM: 'AM',
+  AMAZONAS: 'AM',
+  BA: 'BA',
+  BAHIA: 'BA',
+  CE: 'CE',
+  CEARA: 'CE',
+  DF: 'DF',
+  'DISTRITO FEDERAL': 'DF',
+  ES: 'ES',
+  'ESPIRITO SANTO': 'ES',
+  GO: 'GO',
+  GOIAS: 'GO',
+  MA: 'MA',
+  MARANHAO: 'MA',
+  MT: 'MT',
+  'MATO GROSSO': 'MT',
+  MS: 'MS',
+  'MATO GROSSO DO SUL': 'MS',
+  MG: 'MG',
+  'MINAS GERAIS': 'MG',
+  PA: 'PA',
+  PARA: 'PA',
+  PB: 'PB',
+  PARAIBA: 'PB',
+  PR: 'PR',
+  PARANA: 'PR',
+  PE: 'PE',
+  PERNAMBUCO: 'PE',
+  PI: 'PI',
+  PIAUI: 'PI',
+  RJ: 'RJ',
+  'RIO DE JANEIRO': 'RJ',
+  RN: 'RN',
+  'RIO GRANDE DO NORTE': 'RN',
+  RS: 'RS',
+  'RIO GRANDE DO SUL': 'RS',
+  RO: 'RO',
+  RONDONIA: 'RO',
+  RR: 'RR',
+  RORAIMA: 'RR',
+  SC: 'SC',
+  'SANTA CATARINA': 'SC',
+  SP: 'SP',
+  'SAO PAULO': 'SP',
+  SE: 'SE',
+  SERGIPE: 'SE',
+  TO: 'TO',
+  TOCANTINS: 'TO',
+};
+
+/** UF → nome amigável no filtro. */
+export const STATE_LABELS: Record<string, string> = {
+  AC: 'Acre',
+  AL: 'Alagoas',
+  AP: 'Amapá',
+  AM: 'Amazonas',
+  BA: 'Bahia',
+  CE: 'Ceará',
+  DF: 'Distrito Federal',
+  ES: 'Espírito Santo',
+  GO: 'Goiás',
+  MA: 'Maranhão',
+  MT: 'Mato Grosso',
+  MS: 'Mato Grosso do Sul',
+  MG: 'Minas Gerais',
+  PA: 'Pará',
+  PB: 'Paraíba',
+  PR: 'Paraná',
+  PE: 'Pernambuco',
+  PI: 'Piauí',
+  RJ: 'Rio de Janeiro',
+  RN: 'Rio Grande do Norte',
+  RS: 'Rio Grande do Sul',
+  RO: 'Rondônia',
+  RR: 'Roraima',
+  SC: 'Santa Catarina',
+  SP: 'São Paulo',
+  SE: 'Sergipe',
+  TO: 'Tocantins',
+};
+
+export function formatStateLabel(uf: string): string {
+  const key = normalizeState(uf);
+  const name = STATE_LABELS[key];
+  return name ? `${key} · ${name}` : key;
 }
 
 export function getCompanyState(company: Pick<Company, 'state' | 'city'>): string {
   const raw = normalizeState(company.state);
-  const aliases: Record<string, string> = {
-    CEARA: 'CE',
-    PERNAMBUCO: 'PE',
-    BAHIA: 'BA',
-    PARAIBA: 'PB',
-    'RIO GRANDE DO NORTE': 'RN',
-    PIAUI: 'PI',
-    MARANHAO: 'MA',
-    ALAGOAS: 'AL',
-    SERGIPE: 'SE',
-  };
   if (raw) {
-    if (aliases[raw]) return aliases[raw];
-    if (raw.length === 2) return raw;
-    return raw;
+    if (STATE_NAME_TO_UF[raw]) return STATE_NAME_TO_UF[raw];
+    // "CE - Ceará", "SP/São Paulo"
+    const two = raw.slice(0, 2);
+    if (/^[A-Z]{2}$/.test(two) && STATE_LABELS[two] && (raw.length === 2 || /[\s\-\/]/.test(raw[2] || ''))) {
+      return two;
+    }
+    if (raw.length === 2 && STATE_LABELS[raw]) return raw;
+    // tenta sem hífens/extra
+    const compact = raw.replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (STATE_NAME_TO_UF[compact]) return STATE_NAME_TO_UF[compact];
   }
+
+  // Fallback por cidade conhecida (só quando state da API veio vazio)
   const city = normalizeCity(company.city);
   if (
     city.includes('fortaleza') ||
     city.includes('caucaia') ||
     city.includes('maracanau') ||
-    city.includes('pacajus')
+    city.includes('pacajus') ||
+    city.includes('sobral') ||
+    city.includes('juazeiro do norte')
   ) {
     return 'CE';
   }
+  if (city.includes('recife') || city.includes('olinda') || city.includes('jaboatao')) return 'PE';
+  if (city.includes('joao pessoa') || city.includes('campina grande')) return 'PB';
+  if (
+    city.includes('sao paulo') ||
+    city.includes('campinas') ||
+    city.includes('guarulhos') ||
+    city.includes('santos')
+  ) {
+    return 'SP';
+  }
+  if (city.includes('salvador') || city.includes('feira de santana')) return 'BA';
+  if (city.includes('natal') || city.includes('mossoro')) return 'RN';
+  if (city.includes('maceio')) return 'AL';
+  if (city.includes('teresina')) return 'PI';
+  if (city.includes('sao luis')) return 'MA';
+  if (city.includes('aracaju')) return 'SE';
+  if (city.includes('belo horizonte')) return 'MG';
+  if (city.includes('rio de janeiro') || city.includes('niteroi')) return 'RJ';
+  if (city.includes('curitiba')) return 'PR';
+  if (city.includes('porto alegre')) return 'RS';
+  if (city.includes('florianopolis')) return 'SC';
+  if (city.includes('brasilia')) return 'DF';
+  if (city.includes('goiania')) return 'GO';
+  if (city.includes('belem')) return 'PA';
+  if (city.includes('manaus')) return 'AM';
+
   return '—';
 }
 
-/** Estados distintos presentes nas empresas. */
+/** Estados distintos presentes nas empresas (sempre UF canônica). */
 export function listStates(companies: Company[]): string[] {
   const set = new Set<string>();
   companies.forEach((c) => {
     const st = getCompanyState(c);
     if (st && st !== '—') set.add(st);
   });
-  return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  return Array.from(set).sort((a, b) => {
+    // Ceará primeiro (base do time), depois alfabético
+    if (a === 'CE' && b !== 'CE') return -1;
+    if (b === 'CE' && a !== 'CE') return 1;
+    return a.localeCompare(b, 'pt-BR');
+  });
 }
 
 export function filterByState(companies: Company[], state: string | 'ALL'): Company[] {
   if (state === 'ALL') return companies;
   const key = normalizeState(state);
-  return companies.filter((c) => normalizeState(getCompanyState(c)) === key);
+  const uf = STATE_NAME_TO_UF[key] || (key.length === 2 ? key : key);
+  return companies.filter((c) => getCompanyState(c) === uf);
 }
 
 export function cityCenter(companies: Company[]): [number, number] {
@@ -167,4 +295,25 @@ export function filterByGroup(
 ): Company[] {
   if (groupId === 'ALL') return companies;
   return companies.filter((c) => c.groupId === groupId);
+}
+
+/**
+ * Cota de estagiários a partir do quadro CLT (amount_clt):
+ * 1–5 → 1 · 6–10 → 2 · 11–25 → 5 · 26+ → 20% do CLT
+ */
+export function computeInternQuota(amountClt: number | null | undefined): number | null {
+  const n = Number(amountClt);
+  if (!Number.isFinite(n) || n < 1) return null;
+  if (n <= 5) return 1;
+  if (n <= 10) return 2;
+  if (n <= 25) return 5;
+  return Math.max(1, Math.round(n * 0.2));
+}
+
+/** Normaliza amount_clt vindo da API (número ou string). */
+export function parseAmountClt(value: unknown): number | null {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/\D/g, '') || NaN);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.trunc(n);
 }

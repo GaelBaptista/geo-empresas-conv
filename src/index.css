@@ -258,25 +258,305 @@
 }
 
 .leaflet-popup-content-wrapper {
-  border-radius: 14px;
-  box-shadow: 0 12px 36px oklch(0.25 0.04 240 / 0.2);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px oklch(0.25 0.04 240 / 0.22);
   padding: 0;
   overflow: hidden;
   background: var(--card);
   color: var(--card-foreground);
+  border: 1px solid color-mix(in oklch, var(--border) 80%, transparent);
 }
 
 .dark .leaflet-popup-content-wrapper {
-  box-shadow: 0 12px 36px oklch(0 0 0 / 0.5);
+  box-shadow: 0 14px 40px oklch(0 0 0 / 0.55);
 }
 
 .leaflet-popup-content {
-  margin: 12px;
+  margin: 0;
+  min-width: 280px;
+  max-width: 320px;
+  line-height: 1.4;
 }
 
 .leaflet-popup-tip {
   box-shadow: none;
   background: var(--card);
+}
+
+/* —— Card do pin (empresa) —— */
+.company-popup {
+  padding: 14px 14px 12px;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  color: var(--card-foreground);
+}
+
+.company-popup .cp-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+}
+
+.company-popup .cp-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--primary) 12%, var(--muted));
+  color: color-mix(in oklch, var(--primary) 70%, var(--foreground));
+  margin-bottom: 8px;
+}
+
+.company-popup .cp-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--foreground);
+  letter-spacing: -0.01em;
+}
+
+.company-popup .cp-legal {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted-foreground);
+}
+
+.company-popup .cp-group {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in oklch, var(--foreground) 75%, var(--muted-foreground));
+}
+
+.company-popup .cp-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.company-popup .cp-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 8px 7px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  min-width: 0;
+}
+
+.company-popup .cp-metric--green {
+  background: color-mix(in oklch, oklch(0.75 0.14 155) 18%, var(--card));
+  border-color: color-mix(in oklch, oklch(0.65 0.14 155) 28%, transparent);
+}
+
+.company-popup .cp-metric--sky {
+  background: color-mix(in oklch, oklch(0.75 0.12 230) 18%, var(--card));
+  border-color: color-mix(in oklch, oklch(0.65 0.12 230) 28%, transparent);
+}
+
+.company-popup .cp-metric--violet {
+  background: color-mix(in oklch, oklch(0.7 0.14 300) 16%, var(--card));
+  border-color: color-mix(in oklch, oklch(0.6 0.14 300) 26%, transparent);
+}
+
+.company-popup .cp-metric-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+}
+
+.company-popup .cp-metric-value {
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.company-popup .cp-metric-hint {
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.company-popup .cp-metric--green .cp-metric-value {
+  color: oklch(0.42 0.12 155);
+}
+.company-popup .cp-metric--sky .cp-metric-value {
+  color: oklch(0.42 0.12 230);
+}
+.company-popup .cp-metric--violet .cp-metric-value {
+  color: oklch(0.42 0.14 300);
+}
+
+.dark .company-popup .cp-metric--green .cp-metric-value {
+  color: oklch(0.82 0.12 155);
+}
+.dark .company-popup .cp-metric--sky .cp-metric-value {
+  color: oklch(0.82 0.1 230);
+}
+.dark .company-popup .cp-metric--violet .cp-metric-value {
+  color: oklch(0.82 0.1 300);
+}
+
+.company-popup .cp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.company-popup .cp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.company-popup .cp-row-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+
+.company-popup .cp-row-value {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--foreground);
+  word-break: break-word;
+}
+
+.company-popup .cp-visit {
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  box-shadow: 0 2px 8px color-mix(in oklch, var(--primary) 35%, transparent);
+}
+
+.company-popup .cp-visit-kicker {
+  margin: 0 0 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in oklch, var(--primary-foreground) 78%, transparent);
+}
+
+.company-popup .cp-visit-date {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--primary-foreground);
+}
+
+.company-popup .cp-visit-title {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: color-mix(in oklch, var(--primary-foreground) 92%, transparent);
+}
+
+.company-popup .cp-visit-obs {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in oklch, var(--primary-foreground) 25%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+  color: color-mix(in oklch, var(--primary-foreground) 88%, transparent);
+}
+
+.company-popup .cp-visit-obs strong {
+  font-weight: 700;
+  color: var(--primary-foreground);
+}
+
+.company-popup .cp-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.company-popup .cp-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+  user-select: none;
+}
+
+.company-popup .cp-btn--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: color-mix(in oklch, var(--primary) 80%, black);
+  box-shadow: 0 1px 2px oklch(0.3 0.05 240 / 0.12);
+}
+
+.company-popup .cp-btn--primary:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 4px 12px color-mix(in oklch, var(--primary) 35%, transparent);
+  transform: translateY(-1px);
+}
+
+.company-popup .cp-btn--primary:active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+.company-popup .cp-btn--ghost {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.company-popup .cp-btn--ghost:hover {
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+  color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px oklch(0.3 0.04 240 / 0.08);
+}
+
+.company-popup .cp-btn--ghost:active {
+  transform: translateY(0);
+}
+
+.company-popup .cp-footnote {
+  margin: 10px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
 }
 
 .leaflet-control-zoom a {
