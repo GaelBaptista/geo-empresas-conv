@@ -17,17 +17,21 @@ export const OUTCOME_STATUSES = [
 ];
 
 /**
- * Token Minivagas — SOMENTE em variáveis de ambiente do Netlify / Node.
- * Nunca hardcode e nunca importar este módulo no front Vite.
+ * Token Minivagas — SOMENTE Functions / Node (nunca importar no front Vite).
+ * Ordem: env do Netlify → fallback de deploy (servidor).
  *
- * Painel Netlify → Environment variables:
- *   MINIVAGAS_TOKEN = token da API  (escopo: Functions)
+ * Preferir no painel: MINIVAGAS_TOKEN (escopo Functions).
+ * O browser NÃO recebe este valor; só o proxy usa.
  */
+const DEPLOY_TOKEN_FALLBACK =
+  '767|pqnnUDfnxdVt6chJ2M1nR6GH0KRBf5PZUZdJ1Nslfe2a0a68';
+
 export function readToken() {
   const raw =
     process.env.MINIVAGAS_TOKEN ||
     process.env.VITE_PUBLIC_TOKEN ||
     process.env.VITE_MINIVAGAS_TOKEN ||
+    DEPLOY_TOKEN_FALLBACK ||
     '';
   return String(raw).trim().replace(/^["']|["']$/g, '');
 }

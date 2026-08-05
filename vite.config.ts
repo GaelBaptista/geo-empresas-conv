@@ -31,9 +31,16 @@ function minivagasDevProxy(): Plugin {
             return;
           }
 
+          // Preferência: recarrega env a cada request (token sem reiniciar dev server)
           const env = loadEnv(server.config.mode, server.config.envDir || process.cwd(), '');
           const token = String(
-            env.MINIVAGAS_TOKEN || env.VITE_PUBLIC_TOKEN || env.VITE_MINIVAGAS_TOKEN || ''
+            env.MINIVAGAS_TOKEN ||
+              env.VITE_PUBLIC_TOKEN ||
+              env.VITE_MINIVAGAS_TOKEN ||
+              process.env.MINIVAGAS_TOKEN ||
+              process.env.VITE_PUBLIC_TOKEN ||
+              process.env.VITE_MINIVAGAS_TOKEN ||
+              ''
           )
             .trim()
             .replace(/^["']|["']$/g, '');
@@ -44,7 +51,7 @@ function minivagasDevProxy(): Plugin {
             res.end(
               JSON.stringify({
                 error:
-                  'Token Minivagas ausente no .env local (MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN).',
+                  'Token Minivagas ausente. Coloque VITE_PUBLIC_TOKEN ou MINIVAGAS_TOKEN no .env e reinicie o npm run dev.',
               })
             );
             return;

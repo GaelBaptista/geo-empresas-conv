@@ -1,16 +1,8 @@
 /**
  * Cliente Minivagas — o browser NUNCA envia o token.
  * Dev:  Vite middleware /api/minivagas (token no Node via .env)
- * Prod: Function Netlify (token só no servidor; path da function evita falha de rewrite)
+ * Prod: Function Netlify (token só no servidor)
  */
-
-function proxyUrl(): string {
-  // Em produção no Netlify a Function é a fonte da verdade.
-  if (import.meta.env.PROD) {
-    return '/.netlify/functions/minivagas-proxy';
-  }
-  return '/api/minivagas';
-}
 
 const CACHE_TTL_MS = 30_000;
 
@@ -35,7 +27,19 @@ function normalizeApiPath(path: string): string {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
-async function fetchViaProxy<T>(
+/** Paths do proxy — produção usa Function; se falhar tenta /api (rewrite). */
+function proxyCandidates(): string[] {
+  if (import.meta.env.PROD) {
+    return [
+      '/.netlify/functions/minivagas-proxy',
+      '/api/minivagas',
+    ];
+  }
+  return ['/api/minivagas'];
+}
+
+async function fetchViaOneProxy<T>(
+  base: string,
   path: string,
   params?: Record<string, unknown>
 ): Promise<T> {
@@ -47,7 +51,7 @@ async function fetchViaProxy<T>(
       qs.set(key, String(value));
     }
   }
-  const res = await fetch(`${proxyUrl()}?${qs.toString()}`);
+  const res = await fetch(`${base}?${qs.toString()}`);
   if (!res.ok) {
     let detail = '';
     try {
@@ -59,6 +63,24 @@ async function fetchViaProxy<T>(
     throw new Error(`Minivagas proxy HTTP ${res.status}${detail}`);
   }
   return (await res.json()) as T;
+}
+
+async function fetchViaProxy<T>(
+  path: string,
+  params?: Record<string, unknown>
+): Promise<T> {
+  const bases = proxyCandidates();
+  let lastError: unknown;
+  for (const base of bases) {
+    try {
+      return await fetchViaOneProxy<T>(base, path, params);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Minivagas proxy indisponível');
 }
 
 export async function getEstagius<T>(
