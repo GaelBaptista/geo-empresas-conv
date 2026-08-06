@@ -169,12 +169,12 @@ function buildDocDefinition(
         ...(reputation.enviados > 0
           ? ([
               {
-                text: `Aproveitamento ${pct(reputation.utilizationRate)} · Contratação ${pct(reputation.hireRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)} (sobre enviados)`,
+                text: `Aproveitamento ${pct(reputation.utilizationRate)} · Perda ${pct(reputation.discardRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)} (sobre enviados)`,
                 style: 'muted',
                 margin: [0, 10, 0, 0] as [number, number, number, number],
               },
               {
-                text: `Aproveitamento = (contratados + entrevista) ÷ enviados · Contratação = contratados ÷ enviados · ${reputation.emFunil} em entrevista`,
+                text: `Aproveitamento = contratados ÷ enviados · Perda = (reprovados + faltas) ÷ enviados · ${reputation.emFunil} em entrevista`,
                 style: 'muted',
                 margin: [0, 4, 0, 0] as [number, number, number, number],
               },

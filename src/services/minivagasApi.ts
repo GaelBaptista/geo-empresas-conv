@@ -72,17 +72,16 @@ export type CompanyReputation = {
   reprovados: number;
   naoCompareceu: number;
   decididos: number;
-  /** Taxa de contratação: contratados / enviados */
+  /** Taxa de contratação (legado / igual ao aproveitamento atual): contratados / enviados */
   hireRate: number | null;
   rejectRate: number | null;
   noShowRate: number | null;
-  /** (reprovados + faltas) / enviados */
+  /** (reprovados + faltas) / enviados — quanto da base enviada a empresa não aproveitou */
   discardRate: number | null;
   /**
-   * Taxa de aproveitamento da base enviada:
-   * (contratados + em entrevista) / enviados — quanto ainda está em jogo ou já foi aproveitado.
-   * Se ainda não houver nenhum resultado (só entrevista), fica 0% (não começa em 100%).
-   * A reputação e a ordem do ranking usam esta taxa.
+   * Taxa de aproveitamento: contratados / enviados.
+   * Quanto a empresa realmente aproveitou do que foi enviado.
+   * Em entrevista não conta. Reputação e ordem do ranking usam esta taxa.
    */
   utilizationRate: number | null;
   /** 0–100 = taxa de aproveitamento × 100 */
@@ -618,9 +617,8 @@ export function computeReputation(counts: Counts): CompanyReputation {
   const rejectRate = reprovados / enviados;
   const noShowRate = naoCompareceu / enviados;
   const discardRate = (reprovados + naoCompareceu) / enviados;
-  // Aproveitamento = base não descartada. Sem nenhum resultado ainda → 0% (não 100%).
-  const utilizationRate =
-    decididos === 0 ? 0 : (contratados + emFunil) / enviados;
+  // Aproveitamento = quanto a empresa contratou do que enviamos (entrevista não conta).
+  const utilizationRate = contratados / enviados;
 
   const score = Math.round(utilizationRate * 100);
   const label = labelFromUtilizationRate(utilizationRate, {
@@ -1113,7 +1111,7 @@ export function buildReputationRanking(
   const sorted = rows.sort(
     (a, b) =>
       (b.reputation.utilizationRate ?? -1) - (a.reputation.utilizationRate ?? -1) ||
-      (b.reputation.hireRate ?? -1) - (a.reputation.hireRate ?? -1) ||
+      (a.reputation.discardRate ?? 1) - (b.reputation.discardRate ?? 1) ||
       b.reputation.decididos - a.reputation.decididos ||
       b.reputation.enviados - a.reputation.enviados ||
       a.companyName.localeCompare(b.companyName, 'pt-BR')

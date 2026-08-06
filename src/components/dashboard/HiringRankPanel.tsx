@@ -228,7 +228,7 @@ export function HiringRankPanel({
           empresa: row.companyName,
           recrutador: row.recruiters.join(' · '),
           aproveitamento: pctLabel(r.utilizationRate),
-          contratacao: pctLabel(r.hireRate),
+          perda: pctLabel(r.discardRate),
           classificacao: r.label,
           enviados: r.enviados,
           contratados: r.contratados,
@@ -245,7 +245,7 @@ export function HiringRankPanel({
       empresa: row.companyName,
       recrutador: row.recruiters.join(' · '),
       aproveitamento: '',
-      contratacao: '',
+      perda: '',
       classificacao: '',
       enviados: '',
       contratados: '',
@@ -487,9 +487,10 @@ export function HiringRankPanel({
           {view === 'reputation' ? (
             <p className="text-[11px] text-muted-foreground leading-relaxed rounded-lg bg-muted/50 px-3 py-2">
               <span className="font-semibold text-foreground">Aproveitamento</span> (principal) =
-              (contratados + entrevista) ÷ enviados — se ainda não houver resultado, fica 0%.{' '}
-              <span className="font-semibold text-foreground">Contratação</span> (sutil) = contratados
-              ÷ enviados. Só grupos com <strong>5+ enviados</strong>.
+              contratados ÷ enviados — quanto a empresa realmente aproveitou.{' '}
+              <span className="font-semibold text-foreground">Perda</span> (sutil) = (reprovados +
+              faltas) ÷ enviados. Entrevista ainda aberta não entra nas taxas. Só grupos com{' '}
+              <strong>5+ enviados</strong>.
             </p>
           ) : null}
         </div>
@@ -795,9 +796,9 @@ function ReputationBoard({
                       aproveitamento
                     </p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      contratação{' '}
+                      perda{' '}
                       <span className="font-semibold tabular-nums text-foreground/75">
-                        {pctLabel(r.hireRate)}
+                        {pctLabel(r.discardRate)}
                       </span>
                       {r.emFunil > 0 ? (
                         <>
@@ -1063,8 +1064,8 @@ function GroupUnitsSheet({
                               </p>
                               <p className="text-[10px] text-muted-foreground mt-0.5">
                                 aproveit.
-                                {member.hireRate != null
-                                  ? ` · contrat. ${pctLabel(member.hireRate)}`
+                                {member.discardRate != null
+                                  ? ` · perda ${pctLabel(member.discardRate)}`
                                   : ''}
                               </p>
                             </div>

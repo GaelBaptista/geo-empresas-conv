@@ -60,7 +60,7 @@ export function CompanyReputationCard({
           </p>
           <p className="text-[10px] opacity-70 mt-1">aproveitamento</p>
           <p className="text-[10px] opacity-60 mt-1 tabular-nums">
-            contratação {pct(reputation.hireRate)}
+            perda {pct(reputation.discardRate)}
           </p>
         </div>
       </div>
@@ -77,7 +77,7 @@ export function CompanyReputationCard({
         <div className="space-y-1.5">
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] font-medium">
             <span>Aproveitamento {pct(reputation.utilizationRate)}</span>
-            <span className="opacity-75">Contratação {pct(reputation.hireRate)}</span>
+            <span className="opacity-75">Perda {pct(reputation.discardRate)}</span>
             <span className="opacity-75">Reprovou {pct(reputation.rejectRate)}</span>
             <span className="opacity-75">Faltou {pct(reputation.noShowRate)}</span>
           </div>
@@ -99,8 +99,8 @@ export function CompanyReputationCard({
             />
           </div>
           <p className="text-[10px] opacity-70">
-            Aproveitamento = (contratados + entrevista) ÷ enviados · Contratação = contratados ÷
-            enviados · {reputation.emFunil} em entrevista
+            Aproveitamento = contratados ÷ enviados · Perda = (reprovados + faltas) ÷ enviados ·{' '}
+            {reputation.emFunil} em entrevista
           </p>
         </div>
       )}

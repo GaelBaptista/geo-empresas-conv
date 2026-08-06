@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Columns3, Download } from 'lucide-react';
+import { Columns3, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -32,11 +32,27 @@ import {
   columnsForExportMode,
   defaultExportColumnIds,
   downloadTextFile,
+  exportRankingPdf,
   type RankingExportColumnId,
   type RankingExportRow,
 } from '@/lib/ranking-export';
 
 const PREVIEW_LIMIT = 10;
+
+function isNumericCol(id: RankingExportColumnId): boolean {
+  return (
+    id === 'rank' ||
+    id === 'aproveitamento' ||
+    id === 'perda' ||
+    id === 'enviados' ||
+    id === 'contratados' ||
+    id === 'reprovados' ||
+    id === 'faltas' ||
+    id === 'entrevista' ||
+    id === 'unidades' ||
+    id === 'volume'
+  );
+}
 
 export function RankingExportMenu({
   mode,
@@ -50,6 +66,7 @@ export function RankingExportMenu({
   rows: RankingExportRow[];
 }) {
   const [open, setOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const available = columnsForExportMode(mode);
   const [selected, setSelected] = useState<RankingExportColumnId[]>(() =>
     defaultExportColumnIds(mode)
@@ -66,6 +83,11 @@ export function RankingExportMenu({
 
   const previewRows = useMemo(() => rows.slice(0, PREVIEW_LIMIT), [rows]);
 
+  const orderedColumnIds = useMemo(
+    () => available.map((c) => c.id).filter((id) => selected.includes(id)),
+    [available, selected]
+  );
+
   const toggle = (id: RankingExportColumnId, on: boolean) => {
     setSelected((prev) => {
       if (on) return prev.includes(id) ? prev : [...prev, id];
@@ -80,20 +102,38 @@ export function RankingExportMenu({
     if (first) setSelected([first]);
   };
 
-  const handleExport = () => {
-    const ordered = available.map((c) => c.id).filter((id) => selected.includes(id));
-    if (ordered.length === 0 || rows.length === 0) return;
-    const csv = buildRankingCsv(rows, ordered);
+  const buildFilenameBase = () => {
     const stamp = new Date().toISOString().slice(0, 10);
     const safePeriod = periodLabel.replace(/[^\wÀ-ú]+/gi, '-').replace(/-+/g, '-');
     const safeView = viewLabel.replace(/[^\wÀ-ú]+/gi, '-').replace(/-+/g, '-');
-    downloadTextFile(
-      `ranking-${safeView}-${safePeriod}-${stamp}.csv`,
-      csv,
-      'text/csv;charset=utf-8'
-    );
+    return `ranking-${safeView}-${safePeriod}-${stamp}`;
+  };
+
+  const handleExportCsv = () => {
+    if (orderedColumnIds.length === 0 || rows.length === 0) return;
+    const csv = buildRankingCsv(rows, orderedColumnIds);
+    downloadTextFile(`${buildFilenameBase()}.csv`, csv, 'text/csv;charset=utf-8');
     setOpen(false);
   };
+
+  const handleExportPdf = async () => {
+    if (orderedColumnIds.length === 0 || rows.length === 0) return;
+    setExportingPdf(true);
+    try {
+      await exportRankingPdf({
+        rows,
+        columnIds: orderedColumnIds,
+        mode,
+        viewLabel,
+        periodLabel,
+      });
+      setOpen(false);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  const canExport = rows.length > 0 && visibleColumns.length > 0 && !exportingPdf;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -113,8 +153,8 @@ export function RankingExportMenu({
         <DialogHeader className="border-b pb-4">
           <DialogTitle>Exportar ranking</DialogTitle>
           <DialogDescription>
-            {viewLabel} · {periodLabel} · escolha as colunas e confira a pré-visualização antes de
-            baixar o CSV.
+            {viewLabel} · {periodLabel} · escolha as colunas, confira a pré-visualização e baixe em
+            CSV ou PDF.
           </DialogDescription>
         </DialogHeader>
 
@@ -172,16 +212,7 @@ export function RankingExportMenu({
                       <TableHead
                         key={col.id}
                         className={
-                          col.id === 'rank' ||
-                          col.id === 'aproveitamento' ||
-                          col.id === 'contratacao' ||
-                          col.id === 'enviados' ||
-                          col.id === 'contratados' ||
-                          col.id === 'reprovados' ||
-                          col.id === 'faltas' ||
-                          col.id === 'entrevista' ||
-                          col.id === 'unidades' ||
-                          col.id === 'volume'
+                          isNumericCol(col.id)
                             ? 'text-right whitespace-nowrap'
                             : 'whitespace-nowrap'
                         }
@@ -206,22 +237,11 @@ export function RankingExportMenu({
                       <TableRow key={`${row.rank}-${row.empresa}`}>
                         {visibleColumns.map((col) => {
                           const value = row[col.id];
-                          const alignRight =
-                            col.id === 'rank' ||
-                            col.id === 'aproveitamento' ||
-                            col.id === 'contratacao' ||
-                            col.id === 'enviados' ||
-                            col.id === 'contratados' ||
-                            col.id === 'reprovados' ||
-                            col.id === 'faltas' ||
-                            col.id === 'entrevista' ||
-                            col.id === 'unidades' ||
-                            col.id === 'volume';
                           return (
                             <TableCell
                               key={col.id}
                               className={
-                                alignRight
+                                isNumericCol(col.id)
                                   ? 'text-right tabular-nums whitespace-nowrap'
                                   : 'max-w-[14rem] truncate'
                               }
@@ -242,8 +262,8 @@ export function RankingExportMenu({
 
           {rows.length > PREVIEW_LIMIT ? (
             <p className="text-xs text-muted-foreground">
-              Pré-visualização: {PREVIEW_LIMIT} de {rows.length.toLocaleString('pt-BR')} linhas. O
-              CSV exporta a lista completa.
+              Pré-visualização: {PREVIEW_LIMIT} de {rows.length.toLocaleString('pt-BR')} linhas. CSV e
+              PDF exportam a lista completa.
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
@@ -252,19 +272,31 @@ export function RankingExportMenu({
           )}
         </div>
 
-        <DialogFooter className="border-t pt-4 gap-2">
+        <DialogFooter className="border-t pt-4 gap-2 sm:justify-between">
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>
             Cancelar
           </Button>
-          <Button
-            type="button"
-            className="gap-1.5"
-            disabled={rows.length === 0 || visibleColumns.length === 0}
-            onClick={handleExport}
-          >
-            <Download className="size-3.5" />
-            Baixar CSV
-          </Button>
+          <div className="flex flex-col-reverse sm:flex-row gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="gap-1.5"
+              disabled={!canExport}
+              onClick={handleExportCsv}
+            >
+              <Download className="size-3.5" />
+              Baixar CSV
+            </Button>
+            <Button
+              type="button"
+              className="gap-1.5"
+              disabled={!canExport}
+              onClick={() => void handleExportPdf()}
+            >
+              <FileText className="size-3.5" />
+              {exportingPdf ? 'Gerando PDF…' : 'Baixar PDF'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
