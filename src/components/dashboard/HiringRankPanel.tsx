@@ -5,25 +5,14 @@ import {
   Building2,
   Sparkles,
   UserX,
-  Info,
-  CircleHelp,
-  ChevronDown,
   MapPin,
   Search,
   RefreshCw,
+  Users,
+  ChevronRight,
+  CalendarRange,
 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import {
   Pagination,
@@ -34,14 +23,15 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from '@/components/ui/pagination';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Tooltip,
   TooltipContent,
@@ -51,20 +41,22 @@ import {
 import { cn } from '@/lib/utils';
 import { formatSyncAgo } from '@/lib/format-relative';
 import {
-  rankingsForPeriod,
-  reputationCriteria,
+  listRankingPeriodOptions,
+  periodKey,
+  rankingsForSelection,
   reputationTone,
   type GroupMemberRef,
-  type HiringPeriod,
+  type HiringPeriodSelection,
   type HiringRankRow,
   type MinivagasBundle,
+  type ReputationLabel,
   type ReputationRankRow,
 } from '@/services/minivagasApi';
 import type { Company } from '@/types';
 
 type RankView = 'reputation' | 'hired' | 'rejected' | 'noshow';
 
-const PAGE_SIZE = 15;
+const PAGE_SIZE = 12;
 
 function formatCnpj(digits: string): string {
   if (digits.length !== 14) return digits;
@@ -93,8 +85,6 @@ function matchesRankSearch(
   const q = normalizeSearch(query);
   if (!q) return true;
 
-  // Só busca CNPJ se a query tiver dígitos de verdade
-  // ("".includes em qualquer CNPJ é sempre true — bug que quebrava a busca por nome)
   const digitQuery = query.replace(/\D/g, '');
   const searchByCnpj = digitQuery.length >= 3;
 
@@ -120,6 +110,33 @@ function buildPageItems(current: number, total: number): (number | 'ellipsis')[]
   return items;
 }
 
+function stripeForLabel(label: ReputationLabel): string {
+  switch (label) {
+    case 'Excelente':
+      return 'bg-emerald-500';
+    case 'Boa':
+      return 'bg-teal-500';
+    case 'Regular':
+      return 'bg-amber-400';
+    case 'Atenção':
+      return 'bg-orange-500';
+    case 'Crítica':
+      return 'bg-rose-500';
+    default:
+      return 'bg-muted-foreground/40';
+  }
+}
+
+function openMemberFicha(
+  member: GroupMemberRef,
+  companies: Company[],
+  onSelectCompany: (company: Company) => void
+) {
+  if (!member.companyId) return;
+  const company = companies.find((c) => c.id === member.companyId);
+  if (company) onSelectCompany(company);
+}
+
 interface HiringRankPanelProps {
   bundle: MinivagasBundle;
   companies: Company[];
@@ -134,11 +151,21 @@ export function HiringRankPanel({
   onSelectCompany,
   className,
 }: HiringRankPanelProps) {
-  const [period, setPeriod] = useState<HiringPeriod>('all');
+  const periodOptions = useMemo(() => listRankingPeriodOptions(), []);
+  const [periodSelection, setPeriodSelection] = useState<HiringPeriodSelection>(
+    () => periodOptions[0]?.selection ?? { type: 'all' }
+  );
   const [view, setView] = useState<RankView>('reputation');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [unitsOpen, setUnitsOpen] = useState(false);
+  const [unitsContext, setUnitsContext] = useState<{
+    name: string;
+    members: GroupMemberRef[];
+    mode: 'reputation' | 'volume';
+    volumeAccent?: 'hired' | 'rejected' | 'noshow';
+  } | null>(null);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 30_000);
@@ -147,14 +174,15 @@ export function HiringRankPanel({
 
   const syncLabel = formatSyncAgo(bundle.totals.freezeLastSyncAt, nowTick);
 
-  const { topRejecters, topHired, topNoShows, topReputation } = useMemo(
-    () => rankingsForPeriod(bundle, period),
-    [bundle, period]
+  const periodData = useMemo(
+    () => rankingsForSelection(bundle, companies, periodSelection),
+    [bundle, companies, periodSelection]
   );
+  const { topRejecters, topHired, topNoShows, topReputation, totals } = periodData;
 
   useEffect(() => {
     setPage(1);
-  }, [period, view, search]);
+  }, [periodSelection, view, search]);
 
   const filteredReputation = useMemo(
     () =>
@@ -187,327 +215,288 @@ export function HiringRankPanel({
     [filteredVolume, pageStart]
   );
 
-  const monthLabel = new Date().toLocaleDateString('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-  });
+  const activePeriodKey = periodKey(periodSelection);
+  const activePeriodLabel =
+    periodOptions.find((o) => o.key === activePeriodKey)?.label ?? 'Geral';
 
-  const totalReprov =
-    period === 'all' ? bundle.totals.reprovados : bundle.totals.reprovadosMes;
-  const totalHired =
-    period === 'all' ? bundle.totals.contratados : bundle.totals.contratadosMes;
-  const totalNoShow =
-    period === 'all' ? bundle.totals.naoCompareceu : bundle.totals.naoCompareceuMes;
-  const totalCandidatos =
-    period === 'all'
-      ? bundle.totals.enviados
-      : bundle.totals.contratadosMes +
-        bundle.totals.reprovadosMes +
-        bundle.totals.naoCompareceuMes;
+  const openUnits = (
+    name: string,
+    members: GroupMemberRef[],
+    mode: 'reputation' | 'volume',
+    volumeAccent?: 'hired' | 'rejected' | 'noshow'
+  ) => {
+    setUnitsContext({ name, members, mode, volumeAccent });
+    setUnitsOpen(true);
+  };
 
   const views: {
     id: RankView;
     label: string;
-    description: string;
+    short: string;
     icon: typeof Sparkles;
   }[] = [
-    {
-      id: 'reputation',
-      label: 'Reputação',
-      description: 'Taxa de contratação',
-      icon: Sparkles,
-    },
-    {
-      id: 'hired',
-      label: 'Contratados',
-      description: 'Quem mais contratou',
-      icon: BriefcaseBusiness,
-    },
-    {
-      id: 'rejected',
-      label: 'Reprovados',
-      description: 'Quem mais reprovou',
-      icon: ThumbsDown,
-    },
-    {
-      id: 'noshow',
-      label: 'Faltas',
-      description: 'Quem mais faltou',
-      icon: UserX,
-    },
+    { id: 'reputation', label: 'Reputação', short: 'Aproveitamento', icon: Sparkles },
+    { id: 'hired', label: 'Contratados', short: 'Volume', icon: BriefcaseBusiness },
+    { id: 'rejected', label: 'Reprovados', short: 'Volume', icon: ThumbsDown },
+    { id: 'noshow', label: 'Faltas', short: 'Volume', icon: UserX },
   ];
 
-  const listTitle =
+  const listEyebrow =
     view === 'reputation'
-      ? 'Reputação: quem mais contrata após a entrevista'
+      ? 'Ordenado por taxa de aproveitamento · mínimo 5 enviados'
       : view === 'hired'
-        ? 'Volume: grupos que mais contrataram'
+        ? 'Ordenado por volume de contratações'
         : view === 'rejected'
-          ? 'Volume: grupos que mais reprovaram'
-          : 'Volume: grupos com mais faltas';
+          ? 'Ordenado por volume de reprovações'
+          : 'Ordenado por volume de faltas';
 
-  const listHint =
-    view === 'reputation'
-      ? 'Só grupos com 5+ candidatos enviados. Taxa = % contratados sobre enviados. Use a busca e a paginação.'
-      : view === 'hired'
-        ? 'Lista completa · soma de contratações por grupo. Busque e navegue nas páginas.'
-        : view === 'rejected'
-          ? 'Lista completa · soma de reprovações por grupo. Busque e navegue nas páginas.'
-          : 'Lista completa · soma de faltas por grupo. Busque e navegue nas páginas.';
+  const kpis = [
+    {
+      label: 'Candidatos',
+      value: totals.enviados,
+      tone: 'border-l-foreground/25',
+      hint: 'Enviados no período (inclui em entrevista)',
+    },
+    {
+      label: 'Contratados',
+      value: totals.contratados,
+      tone: 'border-l-sky-500',
+      hint: 'Contratações no período',
+    },
+    {
+      label: 'Reprovados',
+      value: totals.reprovados,
+      tone: 'border-l-rose-500',
+      hint: 'Reprovações no período',
+    },
+    {
+      label: 'Faltas',
+      value: totals.naoCompareceu,
+      tone: 'border-l-amber-500',
+      hint: 'Não comparecimentos no período',
+    },
+  ] as const;
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className={cn('space-y-4', className)}>
-        <Alert variant="info">
-          <Info />
-          <AlertTitle>Como ler este ranking</AlertTitle>
-          <AlertDescription className="space-y-2">
-            <p>
-              Cada linha é um <strong>grupo</strong> (todos os CNPJs cadastrados juntos no
-              Minivagas). Os números da linha são a <strong>soma do grupo</strong>.
-            </p>
-            {view === 'reputation' ? (
-              <p>
-                Entram só grupos com <strong>5 ou mais candidatos enviados</strong>. A{' '}
-                <strong>taxa de contratação</strong> é o % de contratados sobre os enviados
-                (inclui quem ainda está em entrevista). Os chips mostram enviados, contratados,
-                reprovados e faltas.
-              </p>
-            ) : (
-              <p>
-                Nesta aba você vê só o <strong>volume</strong> (quantidade), não a taxa. Clique
-                no nome do grupo para abrir cada CNPJ e a ficha no mapa.
-              </p>
-            )}
-          </AlertDescription>
-        </Alert>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 space-y-1">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Building2 className="size-4 text-primary shrink-0" />
+      <div className={cn('space-y-0 overflow-hidden rounded-2xl border bg-card shadow-sm', className)}>
+        {/* Hero / controles */}
+        <div className="relative overflow-hidden border-b bg-gradient-to-br from-teal-50/90 via-card to-sky-50/40 dark:from-teal-950/40 dark:via-card dark:to-sky-950/20">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.35] dark:opacity-20"
+            style={{
+              backgroundImage:
+                'radial-gradient(circle at 12% 20%, oklch(0.72 0.08 185 / 0.35), transparent 42%), radial-gradient(circle at 88% 0%, oklch(0.78 0.06 230 / 0.3), transparent 38%)',
+            }}
+          />
+          <div className="relative space-y-5 p-5 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-teal-800/70 dark:text-teal-200/70">
+                  Desempenho comercial
+                </p>
+                <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-foreground flex items-center gap-2.5">
+                  <span className="inline-flex size-9 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                    <Building2 className="size-4" />
+                  </span>
                   Ranking das empresas
-                </CardTitle>
-                <CardDescription>
-                  Grupo = soma dos CNPJs. Reputação exige 5+ enviados · taxa = contratados /
-                  enviados.
-                </CardDescription>
+                </h2>
+                <p className="max-w-xl text-sm text-muted-foreground leading-relaxed">
+                  Cada posição é um <span className="text-foreground font-medium">grupo</span> (soma
+                  dos CNPJs). Toque em qualquer linha para ver as unidades.
+                </p>
               </div>
-
-              <div className="flex flex-col items-stretch sm:items-end gap-2 shrink-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 self-start sm:self-end font-medium text-muted-foreground"
-                    >
-                      <RefreshCw className="size-3" />
-                      {syncLabel}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="max-w-xs text-xs">
-                    Quando os dados do ranking foram atualizados pela última vez
-                    {bundle.totals.freezeLastSyncAt
-                      ? ` · ${new Date(bundle.totals.freezeLastSyncAt).toLocaleString('pt-BR')}`
-                      : ''}
-                  </TooltipContent>
-                </Tooltip>
-
-                <div className="inline-flex rounded-xl bg-muted p-1 self-start sm:self-end">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={period === 'all' ? 'secondary' : 'ghost'}
-                    className={cn(
-                      'h-8 rounded-lg px-3',
-                      period === 'all' && 'bg-card shadow-sm hover:bg-card'
-                    )}
-                    onClick={() => setPeriod('all')}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 self-start sm:self-auto bg-background/70 backdrop-blur-sm font-medium text-muted-foreground"
                   >
-                    Geral
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={period === 'month' ? 'secondary' : 'ghost'}
-                    className={cn(
-                      'h-8 rounded-lg px-3 capitalize',
-                      period === 'month' && 'bg-card shadow-sm hover:bg-card'
-                    )}
-                    onClick={() => setPeriod('month')}
-                  >
-                    {monthLabel}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-              <StatCard
-                label="Candidatos"
-                value={totalCandidatos}
-                hint="Total no período selecionado"
-                tone="neutral"
-              />
-              <StatCard
-                label="Contratados"
-                value={totalHired}
-                hint="Empresa fechou a vaga com o candidato"
-                tone="sky"
-                active={view === 'hired'}
-                onClick={() => setView('hired')}
-              />
-              <StatCard
-                label="Reprovados"
-                value={totalReprov}
-                hint="Empresa não aprovou o candidato"
-                tone="rose"
-                active={view === 'rejected'}
-                onClick={() => setView('rejected')}
-              />
-              <StatCard
-                label="Não compareceram"
-                value={totalNoShow}
-                hint="Candidato faltou na entrevista"
-                tone="amber"
-                active={view === 'noshow'}
-                onClick={() => setView('noshow')}
-              />
+                    <RefreshCw className="size-3" />
+                    {syncLabel}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                  Última atualização
+                  {bundle.totals.freezeLastSyncAt
+                    ? ` · ${new Date(bundle.totals.freezeLastSyncAt).toLocaleString('pt-BR')}`
+                    : ''}
+                </TooltipContent>
+              </Tooltip>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 rounded-xl bg-muted/70 p-1.5">
-              {views.map((item) => {
-                const Icon = item.icon;
-                const active = view === item.id;
-                return (
-                  <Button
-                    key={item.id}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => setView(item.id)}
-                    className={cn(
-                      'h-auto flex-col items-start gap-0.5 rounded-lg px-3 py-2.5 whitespace-normal text-left',
-                      active
-                        ? 'bg-card shadow-sm ring-1 ring-border hover:bg-card'
-                        : 'text-muted-foreground hover:bg-card/60'
-                    )}
-                  >
-                    <span
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <CalendarRange className="size-3.5" />
+                Período
+                <span className="font-normal normal-case tracking-normal text-muted-foreground/80">
+                  · histórico desde ago/2026
+                </span>
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1 scrollbar-thin">
+                {periodOptions.map((opt) => {
+                  const active = activePeriodKey === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setPeriodSelection(opt.selection)}
                       className={cn(
-                        'inline-flex items-center gap-1.5 text-sm font-semibold',
-                        active && item.id === 'reputation' && 'text-primary',
-                        active && item.id === 'hired' && 'text-sky-700 dark:text-sky-300',
-                        active && item.id === 'rejected' && 'text-rose-700 dark:text-rose-300',
-                        active && item.id === 'noshow' && 'text-amber-700 dark:text-amber-300'
+                        'shrink-0 rounded-lg px-3.5 py-2 text-sm font-medium transition-all cursor-pointer',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        active
+                          ? 'bg-foreground text-background shadow-md'
+                          : 'bg-background/80 text-muted-foreground border border-border/70 hover:text-foreground hover:border-foreground/20'
                       )}
                     >
-                      <Icon className="size-3.5 shrink-0" />
-                      {item.label}
-                    </span>
-                    <span className="text-[11px] font-normal opacity-70 leading-snug">
-                      {item.description}
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3 border-b bg-muted/30 space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-sm">{listTitle}</CardTitle>
-                <CardDescription className="mt-1">{listHint}</CardDescription>
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
-              {view === 'reputation' && (
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                  <LegendDot color="bg-sky-500" label="Contratados" />
-                  <LegendDot color="bg-rose-500" label="Reprovados" />
-                  <LegendDot color="bg-amber-500" label="Faltas" />
-                </div>
-              )}
             </div>
+          </div>
+        </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative w-full sm:max-w-xl">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        {/* KPIs compactos */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 border-b divide-x divide-y lg:divide-y-0 bg-muted/20">
+          {kpis.map((kpi) => (
+            <div
+              key={kpi.label}
+              className={cn('border-l-4 px-4 py-3.5 sm:px-5', kpi.tone)}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground cursor-help">
+                    {kpi.label}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent>{kpi.hint}</TooltipContent>
+              </Tooltip>
+              <p className="mt-1 text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
+                {kpi.value.toLocaleString('pt-BR')}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Abas de ranking + busca */}
+        <div className="border-b bg-card px-4 py-4 sm:px-5 space-y-4">
+          <div
+            role="tablist"
+            className="grid grid-cols-2 sm:grid-cols-4 gap-1 rounded-xl bg-muted/70 p-1"
+          >
+            {views.map((item) => {
+              const Icon = item.icon;
+              const active = view === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(item.id)}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-lg px-2 py-2.5 text-sm font-semibold transition-all cursor-pointer',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    active
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <Icon className={cn('size-3.5 shrink-0', active && 'text-primary')} />
+                  <span className="truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                {views.find((v) => v.id === view)?.label} · {activePeriodLabel}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">{listEyebrow}</p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto sm:max-w-sm">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar grupo, empresa ou CNPJ…"
-                  className="pl-9 h-10"
-                  autoComplete="off"
+                  placeholder="Buscar grupo, unidade ou CNPJ…"
+                  className="pl-9 bg-background h-10"
                 />
               </div>
-              <p className="text-xs text-muted-foreground shrink-0">
-                {filteredCount.toLocaleString('pt-BR')} grupo
-                {filteredCount === 1 ? '' : 's'}
-                {search.trim()
-                  ? ` encontrado${filteredCount === 1 ? '' : 's'} para “${search.trim()}”`
-                  : ' no total'}
-                {filteredCount > PAGE_SIZE
-                  ? ` · página ${safePage} de ${totalPages}`
-                  : ''}
-              </p>
+              <Badge variant="secondary" className="shrink-0 tabular-nums h-10 px-3 text-xs">
+                {filteredCount.toLocaleString('pt-BR')}
+              </Badge>
             </div>
-          </CardHeader>
+          </div>
 
-          <CardContent className="p-0">
-            {view === 'reputation' ? (
-              <ReputationTable
-                rows={pagedReputation}
-                startRank={pageStart}
-                companies={companies}
-                onSelectCompany={onSelectCompany}
-              />
-            ) : (
-              <VolumeTable
-                rows={pagedVolume}
-                startRank={pageStart}
-                maxCount={Math.max(1, ...filteredVolume.map((r) => r.count), 1)}
-                companies={companies}
-                onSelectCompany={onSelectCompany}
-                accent={view === 'hired' ? 'hired' : view === 'rejected' ? 'rejected' : 'noshow'}
-                empty={
-                  search.trim()
-                    ? 'Nenhum grupo encontrado com essa busca.'
-                    : view === 'hired'
-                      ? 'Nenhuma contratação neste período.'
-                      : view === 'rejected'
-                        ? 'Nenhuma reprovação neste período.'
-                        : 'Nenhuma falta neste período.'
-                }
-              />
-            )}
+          {view === 'reputation' ? (
+            <p className="text-[11px] text-muted-foreground leading-relaxed rounded-lg bg-muted/50 px-3 py-2">
+              <span className="font-semibold text-foreground">Aproveitamento</span> = (contratados +
+              entrevista) ÷ enviados ·{' '}
+              <span className="font-semibold text-foreground">Contratação</span> = contratados ÷
+              enviados (secundária)
+            </p>
+          ) : null}
+        </div>
 
-            {filteredCount > PAGE_SIZE ? (
-              <div className="border-t px-3 py-3">
-                <RankPagination
-                  page={safePage}
-                  totalPages={totalPages}
-                  onPageChange={setPage}
-                />
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+        {/* Leaderboard */}
+        <div className="bg-muted/15 p-3 sm:p-4">
+          {view === 'reputation' ? (
+            <ReputationBoard
+              rows={pagedReputation}
+              startRank={pageStart}
+              onOpenUnits={(name, members) => openUnits(name, members, 'reputation')}
+            />
+          ) : (
+            <VolumeBoard
+              rows={pagedVolume}
+              startRank={pageStart}
+              maxCount={Math.max(1, ...filteredVolume.map((r) => r.count), 1)}
+              accent={view === 'hired' ? 'hired' : view === 'rejected' ? 'rejected' : 'noshow'}
+              empty={
+                search.trim()
+                  ? 'Nenhum grupo encontrado com essa busca.'
+                  : view === 'hired'
+                    ? 'Nenhuma contratação neste período.'
+                    : view === 'rejected'
+                      ? 'Nenhuma reprovação neste período.'
+                      : 'Nenhuma falta neste período.'
+              }
+              onOpenUnits={(name, members) =>
+                openUnits(
+                  name,
+                  members,
+                  'volume',
+                  view === 'hired' ? 'hired' : view === 'rejected' ? 'rejected' : 'noshow'
+                )
+              }
+            />
+          )}
+
+          {filteredCount > PAGE_SIZE ? (
+            <div className="pt-4">
+              <RankPagination page={safePage} totalPages={totalPages} onPageChange={setPage} />
+            </div>
+          ) : null}
+        </div>
+
+        <GroupUnitsSheet
+          open={unitsOpen}
+          onOpenChange={setUnitsOpen}
+          context={unitsContext}
+          companies={companies}
+          onSelectCompany={(company) => {
+            setUnitsOpen(false);
+            onSelectCompany(company);
+          }}
+        />
       </div>
     </TooltipProvider>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn('size-2.5 rounded-full', color)} />
-      {label}
-    </span>
   );
 }
 
@@ -538,10 +527,7 @@ function RankPagination({
             </PaginationItem>
           ) : (
             <PaginationItem key={item}>
-              <PaginationLink
-                isActive={item === page}
-                onClick={() => onPageChange(item)}
-              >
+              <PaginationLink isActive={item === page} onClick={() => onPageChange(item)}>
                 {item}
               </PaginationLink>
             </PaginationItem>
@@ -558,81 +544,28 @@ function RankPagination({
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-  tone,
-  active,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  tone: 'neutral' | 'sky' | 'rose' | 'amber';
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  const tones = {
-    neutral: 'bg-muted/60 text-foreground',
-    sky: 'bg-sky-50 text-sky-950 dark:bg-sky-950/50 dark:text-sky-50',
-    rose: 'bg-rose-50 text-rose-950 dark:bg-rose-950/50 dark:text-rose-50',
-    amber: 'bg-amber-50 text-amber-950 dark:bg-amber-950/50 dark:text-amber-50',
-  };
-
-  const Comp = onClick ? 'button' : 'div';
-
-  return (
-    <Comp
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
-      className={cn(
-        'rounded-xl border px-3 py-3 text-left transition',
-        tones[tone],
-        onClick && 'cursor-pointer hover:opacity-90',
-        active && 'ring-2 ring-primary/35'
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">{label}</p>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className="inline-flex opacity-50 hover:opacity-80"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <CircleHelp className="size-3.5" />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{hint}</TooltipContent>
-        </Tooltip>
-      </div>
-      <p className="text-xl sm:text-2xl font-bold tabular-nums leading-tight mt-1">
-        {value.toLocaleString('pt-BR')}
-      </p>
-    </Comp>
-  );
-}
-
 function OutcomeBar({
   hire,
   reject,
   noShow,
+  className,
 }: {
   hire: number;
   reject: number;
   noShow: number;
+  className?: string;
 }) {
   return (
-    <div className="h-2.5 rounded-full bg-muted overflow-hidden flex min-w-[7rem]">
-      <div className="h-full bg-sky-500" style={{ width: `${hire}%` }} title={`${hire}% contratados`} />
-      <div className="h-full bg-rose-500" style={{ width: `${reject}%` }} title={`${reject}% reprovados`} />
-      <div className="h-full bg-amber-500" style={{ width: `${noShow}%` }} title={`${noShow}% faltas`} />
+    <div
+      className={cn('h-1.5 rounded-full bg-muted overflow-hidden flex min-w-[5rem]', className)}
+    >
+      <div className="h-full bg-sky-500" style={{ width: `${hire}%` }} />
+      <div className="h-full bg-rose-500" style={{ width: `${reject}%` }} />
+      <div className="h-full bg-amber-500" style={{ width: `${noShow}%` }} />
     </div>
   );
 }
 
-/** Chips claros: Enviados / Contratados / Reprovados / Faltas */
 function ResultChips({
   enviados,
   contratados,
@@ -648,42 +581,33 @@ function ResultChips({
   emFunil?: number;
   compact?: boolean;
 }) {
-  const pad = compact ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-1 text-[11px]';
+  const pad = compact ? 'px-1.5 py-0.5 text-[10px]' : 'px-2 py-0.5 text-[11px]';
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1">
       {enviados != null ? (
-        <span
-          className={cn(
-            'inline-flex items-center rounded-md font-medium tabular-nums',
-            'bg-muted text-foreground',
-            pad
-          )}
-        >
-          {enviados} enviado{enviados === 1 ? '' : 's'}
+        <span className={cn('rounded-md font-medium tabular-nums bg-muted text-foreground', pad)}>
+          {enviados} env.
         </span>
       ) : null}
       <span
         className={cn(
-          'inline-flex items-center rounded-md font-medium tabular-nums',
-          'bg-sky-50 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200',
+          'rounded-md font-medium tabular-nums bg-sky-50 text-sky-800 dark:bg-sky-950/60 dark:text-sky-200',
           pad
         )}
       >
-        {contratados} contratado{contratados === 1 ? '' : 's'}
+        {contratados} contr.
       </span>
       <span
         className={cn(
-          'inline-flex items-center rounded-md font-medium tabular-nums',
-          'bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-200',
+          'rounded-md font-medium tabular-nums bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-200',
           pad
         )}
       >
-        {reprovados} reprovado{reprovados === 1 ? '' : 's'}
+        {reprovados} repr.
       </span>
       <span
         className={cn(
-          'inline-flex items-center rounded-md font-medium tabular-nums',
-          'bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100',
+          'rounded-md font-medium tabular-nums bg-amber-50 text-amber-900 dark:bg-amber-950/60 dark:text-amber-100',
           pad
         )}
       >
@@ -692,343 +616,154 @@ function ResultChips({
       {emFunil > 0 ? (
         <span
           className={cn(
-            'inline-flex items-center rounded-md font-medium tabular-nums',
-            'bg-muted text-muted-foreground',
+            'rounded-md font-medium tabular-nums bg-muted text-muted-foreground',
             pad
           )}
         >
-          {emFunil} em entrevista
+          {emFunil} entr.
         </span>
       ) : null}
     </div>
   );
 }
 
-function openMemberFicha(
-  member: GroupMemberRef,
-  companies: Company[],
-  onSelectCompany: (company: Company) => void
-) {
-  if (!member.companyId) return;
-  const company = companies.find((c) => c.id === member.companyId);
-  if (company) onSelectCompany(company);
-}
-
-/** Clique no grupo → lista de CNPJs com métricas individuais. */
-function GroupUnitsMenu({
-  name,
-  memberCount,
-  members,
-  companies,
-  onSelectCompany,
-  subtitle,
-  mode = 'reputation',
-  volumeAccent,
-}: {
-  name: string;
-  memberCount: number;
-  members: GroupMemberRef[];
-  companies: Company[];
-  onSelectCompany: (company: Company) => void;
-  subtitle?: string;
-  mode?: 'reputation' | 'volume';
-  volumeAccent?: 'hired' | 'rejected' | 'noshow';
-}) {
-  const selectable = members.filter((m) => m.onMap && m.companyId);
-  const volumeLabel =
-    volumeAccent === 'hired'
-      ? 'contratados'
-      : volumeAccent === 'rejected'
-        ? 'reprovados'
-        : volumeAccent === 'noshow'
-          ? 'faltas'
-          : 'casos';
-
+function RankIndex({ rank }: { rank: number }) {
+  const podium = rank <= 3;
   return (
-    <div className="min-w-0 space-y-1">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              'group flex w-full max-w-full sm:max-w-lg lg:max-w-xl items-center gap-2 rounded-xl border border-border/80 bg-card px-2.5 py-2 text-left',
-              'shadow-sm transition-colors cursor-pointer',
-              'hover:border-primary/45 hover:bg-accent/50 hover:shadow-md',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              'data-[state=open]:border-primary/50 data-[state=open]:bg-accent/60'
-            )}
-          >
-            <span className="min-w-0 flex-1 truncate font-semibold leading-snug">{name}</span>
-            <span
-              className={cn(
-                'inline-flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-muted/80 px-2 py-1',
-                'text-[10px] font-semibold uppercase tracking-wide text-muted-foreground',
-                'transition-colors group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary',
-                'group-data-[state=open]:border-primary/30 group-data-[state=open]:bg-primary/10 group-data-[state=open]:text-primary'
-              )}
-            >
-              {memberCount > 1 ? 'Ver CNPJs' : 'Detalhes'}
-              <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
-            </span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          sideOffset={6}
-          className="w-[min(26rem,calc(100vw-2rem))] max-h-[min(26rem,70vh)] overflow-y-auto p-1.5"
-        >
-          <DropdownMenuLabel className="space-y-0.5 px-2 py-2 font-normal">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {memberCount > 1
-                ? `${memberCount} unidades deste grupo`
-                : 'Unidade deste grupo'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Números abaixo são só daquele CNPJ. Clique para abrir os detalhes.
-            </p>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {members.map((member) => {
-            const canOpen = Boolean(member.onMap && member.companyId);
-            const decididos =
-              member.contratados + member.reprovados + member.naoCompareceu;
-            const hasMetrics =
-              decididos > 0 || member.emFunil > 0 || member.volumeCount > 0;
-
-            return (
-              <DropdownMenuItem
-                key={member.cnpjDigits}
-                disabled={!canOpen}
-                className="items-start gap-2.5 py-3 cursor-pointer"
-                onSelect={() => {
-                  if (canOpen) openMemberFicha(member, companies, onSelectCompany);
-                }}
-              >
-                <MapPin
-                  className={cn(
-                    'mt-0.5 size-3.5 shrink-0',
-                    canOpen ? 'text-primary' : 'text-muted-foreground'
-                  )}
-                />
-                <span className="min-w-0 flex-1 flex flex-col gap-1.5">
-                  <span className="flex items-start justify-between gap-2">
-                    <span className="font-semibold leading-snug">{member.companyName}</span>
-                    {mode === 'reputation' && member.hireRate != null ? (
-                      <span className="shrink-0 text-right">
-                        <span className="block text-sm font-bold tabular-nums text-primary leading-none">
-                          {pctLabel(member.hireRate)}
-                        </span>
-                        <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">
-                          taxa
-                        </span>
-                      </span>
-                    ) : null}
-                    {mode === 'volume' && member.volumeCount > 0 ? (
-                      <span className="shrink-0 text-right">
-                        <span
-                          className={cn(
-                            'block text-sm font-bold tabular-nums leading-none',
-                            volumeAccent === 'hired' && 'text-sky-700 dark:text-sky-300',
-                            volumeAccent === 'rejected' && 'text-rose-700 dark:text-rose-300',
-                            volumeAccent === 'noshow' && 'text-amber-700 dark:text-amber-300'
-                          )}
-                        >
-                          {member.volumeCount}
-                        </span>
-                        <span className="block text-[10px] font-normal text-muted-foreground mt-0.5">
-                          {volumeLabel}
-                        </span>
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="text-xs text-muted-foreground font-normal">
-                    CNPJ {formatCnpj(member.cnpjDigits)}
-                    {member.onMap ? '' : ' · fora do mapa'}
-                  </span>
-                  {hasMetrics ? (
-                    <ResultChips
-                      enviados={decididos + member.emFunil}
-                      contratados={member.contratados}
-                      reprovados={member.reprovados}
-                      naoCompareceu={member.naoCompareceu}
-                      emFunil={member.emFunil}
-                      compact
-                    />
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground font-normal">
-                      Sem resultado neste período
-                    </span>
-                  )}
-                  {canOpen ? (
-                    <span className="text-[10px] font-medium text-primary">
-                      Abrir detalhes →
-                    </span>
-                  ) : null}
-                </span>
-              </DropdownMenuItem>
-            );
-          })}
-          {selectable.length === 0 && (
-            <p className="px-2 py-2.5 text-xs text-muted-foreground">
-              Nenhuma unidade deste grupo está no mapa ainda.
-            </p>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-      {subtitle ? (
-        <p className="text-[11px] text-muted-foreground pl-1">{subtitle}</p>
-      ) : null}
-    </div>
+    <span
+      className={cn(
+        'inline-flex size-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold tabular-nums',
+        podium
+          ? 'bg-foreground text-background shadow-sm'
+          : 'bg-muted/80 text-muted-foreground'
+      )}
+    >
+      {rank}
+    </span>
   );
 }
 
-function ReputationTable({
+function ReputationBoard({
   rows,
   startRank = 0,
-  companies,
-  onSelectCompany,
+  onOpenUnits,
 }: {
   rows: ReputationRankRow[];
   startRank?: number;
-  companies: Company[];
-  onSelectCompany: (company: Company) => void;
+  onOpenUnits: (name: string, members: GroupMemberRef[]) => void;
 }) {
   if (rows.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-12 text-center px-4">
-        Nenhum grupo encontrado. Ajuste a busca ou o período.
-      </p>
+      <EmptyState message="Nenhum grupo encontrado. Ajuste a busca ou o período." />
     );
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="w-12 pl-4">#</TableHead>
-          <TableHead>Grupo</TableHead>
-          <TableHead className="text-center w-40">
-            <span className="block">Taxa de</span>
-            <span className="block">contratação</span>
-          </TableHead>
-          <TableHead className="hidden md:table-cell min-w-[16rem]">
-            Resultado após entrevista
-          </TableHead>
-          <TableHead className="text-right pr-4 w-44">Classificação</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => {
-          const r = row.reputation;
-          const hirePct = Math.round((r.hireRate ?? 0) * 100);
-          const rejectPct = Math.round((r.rejectRate ?? 0) * 100);
-          const noShowPct = Math.round((r.noShowRate ?? 0) * 100);
-          const subtitle =
-            row.memberCount > 1
-              ? `${row.memberCount} CNPJs somados · toque em Ver CNPJs`
-              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'} · toque em Detalhes`;
+    <ul className="space-y-2">
+      {rows.map((row, index) => {
+        const r = row.reputation;
+        const rank = startRank + index + 1;
+        const hirePct = Math.round((r.hireRate ?? 0) * 100);
+        const rejectPct = Math.round((r.rejectRate ?? 0) * 100);
+        const noShowPct = Math.round((r.noShowRate ?? 0) * 100);
 
-          return (
-            <TableRow key={row.groupKey}>
-              <TableCell className="pl-4 align-top pt-4">
-                <span className="inline-flex size-7 items-center justify-center rounded-full bg-muted text-xs font-bold">
-                  {startRank + index + 1}
-                </span>
-              </TableCell>
-              <TableCell className="align-top py-3">
-                <GroupUnitsMenu
-                  name={row.companyName}
-                  memberCount={row.memberCount}
-                  members={row.members}
-                  companies={companies}
-                  onSelectCompany={onSelectCompany}
-                  subtitle={subtitle}
-                  mode="reputation"
-                />
-                <div className="md:hidden pt-2 pl-2">
-                  <ResultChips
-                    enviados={r.enviados}
-                    contratados={r.contratados}
-                    reprovados={r.reprovados}
-                    naoCompareceu={r.naoCompareceu}
-                    emFunil={r.emFunil}
-                    compact
-                  />
+        return (
+          <li key={row.groupKey}>
+            <button
+              type="button"
+              onClick={() => onOpenUnits(row.companyName, row.members)}
+              className={cn(
+                'group relative flex w-full overflow-hidden rounded-xl border bg-card text-left transition-all cursor-pointer',
+                'hover:border-primary/40 hover:shadow-md hover:bg-accent/20',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+            >
+              <span
+                className={cn('absolute inset-y-0 left-0 w-1', stripeForLabel(r.label))}
+                aria-hidden
+              />
+              <div className="flex w-full flex-col gap-3 p-3.5 pl-4 sm:flex-row sm:items-center sm:gap-4 sm:p-4 sm:pl-5">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <RankIndex rank={rank} />
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold leading-snug text-foreground group-hover:text-primary transition-colors">
+                        {row.companyName}
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className={cn('font-semibold text-[10px]', reputationTone(r.label))}
+                      >
+                        {r.label}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                      <Users className="size-3 shrink-0" />
+                      {row.memberCount > 1
+                        ? `${row.memberCount} unidades · clique para abrir`
+                        : `1 unidade${row.onMap ? '' : ' · fora do mapa'} · clique para abrir`}
+                    </p>
+                    <div className="pt-0.5 space-y-1.5 max-w-md">
+                      {r.enviados > 0 ? (
+                        <OutcomeBar hire={hirePct} reject={rejectPct} noShow={noShowPct} />
+                      ) : null}
+                      <ResultChips
+                        enviados={r.enviados}
+                        contratados={r.contratados}
+                        reprovados={r.reprovados}
+                        naoCompareceu={r.naoCompareceu}
+                        emFunil={r.emFunil}
+                        compact
+                      />
+                    </div>
+                  </div>
                 </div>
-              </TableCell>
-              <TableCell className="text-center align-top py-3">
-                <p className="text-2xl font-bold tabular-nums text-primary leading-none">
-                  {pctLabel(r.hireRate)}
-                </p>
-                <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground leading-snug">
-                  <p>
-                    <span className="font-semibold text-foreground tabular-nums">
-                      {r.enviados}
-                    </span>{' '}
-                    enviado{r.enviados === 1 ? '' : 's'}
-                  </p>
-                  <p>
-                    <span className="font-semibold text-sky-700 dark:text-sky-300 tabular-nums">
-                      {r.contratados}
-                    </span>{' '}
-                    contratado{r.contratados === 1 ? '' : 's'}
-                  </p>
+
+                <div className="flex items-center justify-between gap-3 sm:justify-end sm:gap-5 pl-12 sm:pl-0">
+                  <div className="text-left sm:text-right">
+                    <p className="text-3xl font-semibold tabular-nums tracking-tight text-primary leading-none">
+                      {pctLabel(r.utilizationRate)}
+                    </p>
+                    <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      aproveitamento
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      contratação{' '}
+                      <span className="font-semibold tabular-nums text-foreground/75">
+                        {pctLabel(r.hireRate)}
+                      </span>
+                    </p>
+                  </div>
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border bg-muted/40 text-muted-foreground transition-all group-hover:border-primary/40 group-hover:bg-primary/10 group-hover:text-primary">
+                    <ChevronRight className="size-4" />
+                  </span>
                 </div>
-              </TableCell>
-              <TableCell className="hidden md:table-cell align-top py-3">
-                <div className="space-y-2 max-w-sm">
-                  {r.enviados > 0 ? (
-                    <OutcomeBar hire={hirePct} reject={rejectPct} noShow={noShowPct} />
-                  ) : null}
-                  <ResultChips
-                    enviados={r.enviados}
-                    contratados={r.contratados}
-                    reprovados={r.reprovados}
-                    naoCompareceu={r.naoCompareceu}
-                    emFunil={r.emFunil}
-                  />
-                </div>
-              </TableCell>
-              <TableCell className="text-right pr-4 align-top py-3">
-                <Badge
-                  variant="outline"
-                  className={cn('font-semibold', reputationTone(r.label))}
-                >
-                  {r.label}
-                </Badge>
-                <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug max-w-[10rem] ml-auto">
-                  {reputationCriteria(r.label)}
-                </p>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
-function VolumeTable({
+function VolumeBoard({
   rows,
   startRank = 0,
   maxCount,
-  companies,
-  onSelectCompany,
   accent,
   empty,
+  onOpenUnits,
 }: {
   rows: HiringRankRow[];
   startRank?: number;
   maxCount?: number;
-  companies: Company[];
-  onSelectCompany: (company: Company) => void;
   accent: 'hired' | 'rejected' | 'noshow';
   empty: string;
+  onOpenUnits: (name: string, members: GroupMemberRef[]) => void;
 }) {
   if (rows.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground py-12 text-center px-4">{empty}</p>
-    );
+    return <EmptyState message={empty} />;
   }
 
   const maxValue = Math.max(1, maxCount ?? 0, ...rows.map((r) => r.count));
@@ -1044,63 +779,269 @@ function VolumeTable({
       : accent === 'rejected'
         ? 'text-rose-700 dark:text-rose-300'
         : 'text-amber-700 dark:text-amber-300';
+  const stripe =
+    accent === 'hired'
+      ? 'bg-sky-500'
+      : accent === 'rejected'
+        ? 'bg-rose-500'
+        : 'bg-amber-500';
   const valueLabel =
-    accent === 'hired' ? 'Contratados' : accent === 'rejected' ? 'Reprovados' : 'Faltas';
+    accent === 'hired' ? 'contratados' : accent === 'rejected' ? 'reprovados' : 'faltas';
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="w-12 pl-4">#</TableHead>
-          <TableHead>Grupo</TableHead>
-          <TableHead className="hidden sm:table-cell min-w-[10rem]">Comparativo</TableHead>
-          <TableHead className="text-right pr-4 w-28">{valueLabel}</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row, index) => {
-          const barPct = Math.round((row.count / maxValue) * 100);
-          const subtitle =
-            row.memberCount > 1
-              ? `${row.memberCount} CNPJs somados · toque em Ver CNPJs`
-              : `1 CNPJ${row.onMap ? '' : ' · fora do mapa'} · toque em Detalhes`;
+    <ul className="space-y-2">
+      {rows.map((row, index) => {
+        const rank = startRank + index + 1;
+        const barPct = Math.round((row.count / maxValue) * 100);
 
-          return (
-            <TableRow key={row.groupKey}>
-              <TableCell className="pl-4">
-                <span className="inline-flex size-7 items-center justify-center rounded-full bg-muted text-xs font-bold">
-                  {startRank + index + 1}
-                </span>
-              </TableCell>
-              <TableCell>
-                <GroupUnitsMenu
-                  name={row.companyName}
-                  memberCount={row.memberCount}
-                  members={row.members}
-                  companies={companies}
-                  onSelectCompany={onSelectCompany}
-                  subtitle={subtitle}
-                  mode="volume"
-                  volumeAccent={accent}
-                />
-              </TableCell>
-              <TableCell className="hidden sm:table-cell">
-                <div className="h-2 rounded-full bg-muted overflow-hidden max-w-xs">
-                  <div
-                    className={cn('h-full rounded-full', bar)}
-                    style={{ width: `${Math.max(barPct, row.count > 0 ? 6 : 0)}%` }}
-                  />
+        return (
+          <li key={row.groupKey}>
+            <button
+              type="button"
+              onClick={() => onOpenUnits(row.companyName, row.members)}
+              className={cn(
+                'group relative flex w-full overflow-hidden rounded-xl border bg-card text-left transition-all cursor-pointer',
+                'hover:border-primary/40 hover:shadow-md hover:bg-accent/20',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+              )}
+            >
+              <span className={cn('absolute inset-y-0 left-0 w-1', stripe)} aria-hidden />
+              <div className="flex w-full items-center gap-3 p-3.5 pl-4 sm:gap-4 sm:p-4 sm:pl-5">
+                <RankIndex rank={rank} />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <p className="font-semibold leading-snug group-hover:text-primary transition-colors">
+                      {row.companyName}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {row.memberCount > 1
+                        ? `${row.memberCount} unidades`
+                        : `1 unidade${row.onMap ? '' : ' · fora do mapa'}`}
+                    </p>
+                  </div>
+                  <div className="h-2 max-w-md rounded-full bg-muted overflow-hidden">
+                    <div
+                      className={cn('h-full rounded-full transition-all', bar)}
+                      style={{ width: `${Math.max(barPct, row.count > 0 ? 5 : 0)}%` }}
+                    />
+                  </div>
                 </div>
-              </TableCell>
-              <TableCell className="text-right pr-4">
-                <span className={cn('text-xl font-bold tabular-nums', num)}>
-                  {row.count.toLocaleString('pt-BR')}
+                <div className="shrink-0 text-right">
+                  <p className={cn('text-2xl sm:text-3xl font-semibold tabular-nums leading-none', num)}>
+                    {row.count.toLocaleString('pt-BR')}
+                  </p>
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {valueLabel}
+                  </p>
+                </div>
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border bg-muted/40 text-muted-foreground transition-all group-hover:border-primary/40 group-hover:bg-primary/10 group-hover:text-primary">
+                  <ChevronRight className="size-4" />
                 </span>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+              </div>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-xl border border-dashed bg-card/60 px-4 py-16 text-center">
+      <Building2 className="mx-auto size-8 text-muted-foreground/40 mb-3" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
+}
+
+function GroupUnitsSheet({
+  open,
+  onOpenChange,
+  context,
+  companies,
+  onSelectCompany,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  context: {
+    name: string;
+    members: GroupMemberRef[];
+    mode: 'reputation' | 'volume';
+    volumeAccent?: 'hired' | 'rejected' | 'noshow';
+  } | null;
+  companies: Company[];
+  onSelectCompany: (company: Company) => void;
+}) {
+  const members = context?.members ?? [];
+  const mode = context?.mode ?? 'reputation';
+  const volumeAccent = context?.volumeAccent;
+  const volumeLabel =
+    volumeAccent === 'hired'
+      ? 'contratados'
+      : volumeAccent === 'rejected'
+        ? 'reprovados'
+        : volumeAccent === 'noshow'
+          ? 'faltas'
+          : 'casos';
+  const [unitSearch, setUnitSearch] = useState('');
+
+  useEffect(() => {
+    if (open) setUnitSearch('');
+  }, [open, context?.name]);
+
+  const filtered = useMemo(() => {
+    const q = normalizeSearch(unitSearch);
+    const digits = unitSearch.replace(/\D/g, '');
+    if (!q && digits.length < 3) return members;
+    return members.filter((m) => {
+      if (normalizeSearch(m.companyName).includes(q)) return true;
+      if (digits.length >= 3 && m.cnpjDigits.includes(digits)) return true;
+      return false;
+    });
+  }, [members, unitSearch]);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex h-full flex-col gap-0 overflow-hidden p-0">
+        <div className="shrink-0 border-b bg-gradient-to-br from-teal-50/80 via-card to-card dark:from-teal-950/30 px-5 py-5 pr-12">
+          <SheetHeader className="space-y-1.5 text-left p-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-teal-800/70 dark:text-teal-200/70">
+              Unidades do grupo
+            </p>
+            <SheetTitle className="text-xl leading-snug pr-2">
+              {context?.name || 'Grupo'}
+            </SheetTitle>
+            <SheetDescription className="text-xs leading-relaxed">
+              {members.length} unidade{members.length === 1 ? '' : 's'} no período selecionado.
+              Toque numa unidade para abrir a ficha no mapa.
+            </SheetDescription>
+          </SheetHeader>
+        </div>
+
+        <div className="shrink-0 border-b px-5 py-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              value={unitSearch}
+              onChange={(e) => setUnitSearch(e.target.value)}
+              placeholder="Filtrar unidade ou CNPJ…"
+              className="pl-9"
+            />
+          </div>
+        </div>
+
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="px-3 py-3 space-y-2">
+            {filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-2 py-10 text-center">
+                Nenhuma unidade encontrada.
+              </p>
+            ) : (
+              filtered.map((member) => {
+                const canOpen = Boolean(member.onMap && member.companyId);
+                const decididos =
+                  member.contratados + member.reprovados + member.naoCompareceu;
+                const hasMetrics =
+                  decididos > 0 || member.emFunil > 0 || member.volumeCount > 0;
+
+                return (
+                  <button
+                    key={member.cnpjDigits}
+                    type="button"
+                    disabled={!canOpen}
+                    onClick={() => {
+                      if (canOpen) openMemberFicha(member, companies, onSelectCompany);
+                    }}
+                    className={cn(
+                      'group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3.5 text-left transition',
+                      canOpen
+                        ? 'hover:border-primary/40 hover:bg-accent/40 cursor-pointer'
+                        : 'opacity-55 cursor-not-allowed'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-lg',
+                        canOpen ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      <MapPin className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold leading-snug">{member.companyName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            CNPJ {formatCnpj(member.cnpjDigits)}
+                            {member.onMap ? '' : ' · fora do mapa'}
+                          </p>
+                        </div>
+                        {mode === 'reputation' && member.utilizationRate != null ? (
+                          <div className="shrink-0 text-right">
+                            <p className="text-lg font-semibold tabular-nums text-primary leading-none">
+                              {pctLabel(member.utilizationRate)}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              aproveit.
+                              {member.hireRate != null
+                                ? ` · ${pctLabel(member.hireRate)} contr.`
+                                : ''}
+                            </p>
+                          </div>
+                        ) : null}
+                        {mode === 'volume' && member.volumeCount > 0 ? (
+                          <div className="shrink-0 text-right">
+                            <p
+                              className={cn(
+                                'text-lg font-semibold tabular-nums leading-none',
+                                volumeAccent === 'hired' && 'text-sky-700 dark:text-sky-300',
+                                volumeAccent === 'rejected' && 'text-rose-700 dark:text-rose-300',
+                                volumeAccent === 'noshow' && 'text-amber-700 dark:text-amber-300'
+                              )}
+                            >
+                              {member.volumeCount}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {volumeLabel}
+                            </p>
+                          </div>
+                        ) : null}
+                      </div>
+                      {hasMetrics ? (
+                        <ResultChips
+                          enviados={decididos + member.emFunil}
+                          contratados={member.contratados}
+                          reprovados={member.reprovados}
+                          naoCompareceu={member.naoCompareceu}
+                          emFunil={member.emFunil}
+                          compact
+                        />
+                      ) : (
+                        <p className="text-[11px] text-muted-foreground">
+                          Sem resultado neste período
+                        </p>
+                      )}
+                      {canOpen ? (
+                        <p className="text-[11px] font-medium text-primary inline-flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                          Abrir ficha no mapa
+                          <ChevronRight className="size-3" />
+                        </p>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </ScrollArea>
+
+        <Separator />
+        <p className="shrink-0 px-5 py-3 text-[11px] text-muted-foreground leading-relaxed">
+          Números abaixo são só daquele CNPJ. O selo do grupo no ranking usa a soma de todas as
+          unidades.
+        </p>
+      </SheetContent>
+    </Sheet>
   );
 }

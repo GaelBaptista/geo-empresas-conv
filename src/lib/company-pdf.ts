@@ -169,7 +169,7 @@ function buildDocDefinition(
         ...(reputation.enviados > 0
           ? ([
               {
-                text: `Contratou ${pct(reputation.hireRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)} (sobre enviados)`,
+                text: `Aproveitamento ${pct(reputation.utilizationRate)} · Contratação ${pct(reputation.hireRate)} · Reprovou ${pct(reputation.rejectRate)} · Faltou ${pct(reputation.noShowRate)} (sobre enviados)`,
                 style: 'muted',
                 margin: [0, 10, 0, 0] as [number, number, number, number],
               },

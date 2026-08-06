@@ -39,14 +39,17 @@ export function CompanyReputationCard({
           </p>
           <p className="text-lg font-bold mt-0.5">{reputation.label}</p>
           <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
-            Resultado dos candidatos enviados para entrevista neste grupo.
+            Reputação pela taxa de aproveitamento da base enviada.
           </p>
         </div>
         <div className="text-right shrink-0">
           <p className="text-3xl font-bold tabular-nums leading-none">
-            {reputation.score != null ? reputation.score : '—'}
+            {pct(reputation.utilizationRate)}
           </p>
-          <p className="text-[10px] opacity-70 mt-1">nota / 100</p>
+          <p className="text-[10px] opacity-70 mt-1">aproveitamento</p>
+          <p className="text-[10px] opacity-60 mt-1 tabular-nums">
+            contratação {pct(reputation.hireRate)}
+          </p>
         </div>
       </div>
 
@@ -61,9 +64,10 @@ export function CompanyReputationCard({
       {reputation.enviados > 0 && (
         <div className="space-y-1.5">
           <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-[11px] font-medium">
-            <span>Contratou {pct(reputation.hireRate)}</span>
-            <span>Reprovou {pct(reputation.rejectRate)}</span>
-            <span>Faltou {pct(reputation.noShowRate)}</span>
+            <span>Aproveitamento {pct(reputation.utilizationRate)}</span>
+            <span className="opacity-75">Contratação {pct(reputation.hireRate)}</span>
+            <span className="opacity-75">Reprovou {pct(reputation.rejectRate)}</span>
+            <span className="opacity-75">Faltou {pct(reputation.noShowRate)}</span>
           </div>
           <div className="h-2.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden flex">
             <div

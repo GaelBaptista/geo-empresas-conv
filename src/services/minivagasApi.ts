@@ -60,10 +60,19 @@ export type CompanyReputation = {
   reprovados: number;
   naoCompareceu: number;
   decididos: number;
+  /** Taxa de contratação: contratados / enviados */
   hireRate: number | null;
   rejectRate: number | null;
   noShowRate: number | null;
-  /** 0–100 com base na taxa de contratação entre decididos */
+  /** (reprovados + faltas) / enviados — inverso do aproveitamento */
+  discardRate: number | null;
+  /**
+   * Taxa de aproveitamento: (contratados + em entrevista) / enviados
+   * = quanto da base enviada não foi descartada (reprovada/falta).
+   * A reputação e a ordem do ranking usam esta taxa.
+   */
+  utilizationRate: number | null;
+  /** 0–100 = taxa de aproveitamento × 100 */
   score: number | null;
   label: ReputationLabel;
 };
@@ -94,6 +103,9 @@ export type GroupMemberRef = {
   naoCompareceu: number;
   emFunil: number;
   hireRate: number | null;
+  discardRate: number | null;
+  /** Taxa de aproveitamento (0–1) só deste CNPJ. */
+  utilizationRate: number | null;
   /** Contagem do ranking de volume atual (contratado/reprovado/falta). */
   volumeCount: number;
 };
@@ -137,6 +149,76 @@ export type MinivagasGroupIndex = {
 };
 
 export type HiringPeriod = 'all' | 'month';
+
+/** Mês 1–12. Histórico do ranking começa em ago/2026. */
+export type YearMonth = { year: number; month: number };
+
+export type HiringPeriodSelection =
+  | { type: 'all' }
+  | { type: 'month'; year: number; month: number };
+
+/** Primeiro mês com histórico no ranking (ago/2026). */
+export const RANKING_HISTORY_START: YearMonth = { year: 2026, month: 8 };
+
+export function periodKey(selection: HiringPeriodSelection): string {
+  if (selection.type === 'all') return 'all';
+  return `${selection.year}-${String(selection.month).padStart(2, '0')}`;
+}
+
+export function formatYearMonthLabel(ym: YearMonth): string {
+  const date = new Date(ym.year, ym.month - 1, 1);
+  const label = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Geral + meses de ago/2026 até o mês atual (mais recente primeiro). */
+export function listRankingPeriodOptions(now = new Date()): Array<{
+  key: string;
+  selection: HiringPeriodSelection;
+  label: string;
+}> {
+  const options: Array<{
+    key: string;
+    selection: HiringPeriodSelection;
+    label: string;
+  }> = [{ key: 'all', selection: { type: 'all' }, label: 'Geral' }];
+
+  const cursor = {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  };
+  const start = RANKING_HISTORY_START;
+
+  while (
+    cursor.year > start.year ||
+    (cursor.year === start.year && cursor.month >= start.month)
+  ) {
+    const selection: HiringPeriodSelection = {
+      type: 'month',
+      year: cursor.year,
+      month: cursor.month,
+    };
+    options.push({
+      key: periodKey(selection),
+      selection,
+      label: formatYearMonthLabel(cursor),
+    });
+    cursor.month -= 1;
+    if (cursor.month < 1) {
+      cursor.month = 12;
+      cursor.year -= 1;
+    }
+  }
+
+  return options;
+}
+
+function isDateInYearMonth(raw: string | null | undefined, ym: YearMonth): boolean {
+  if (!raw) return false;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getFullYear() === ym.year && date.getMonth() + 1 === ym.month;
+}
 
 type Counts = {
   reprovados: number;
@@ -268,10 +350,14 @@ export function filterCandidatosByStatus(
 }
 
 function isInCurrentMonth(item: MinivagasCandidato, now = new Date()): boolean {
-  const raw = item.updated_at || item.created_at || '';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return false;
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  return isDateInYearMonth(item.updated_at || item.created_at || '', {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  });
+}
+
+function isInYearMonth(item: MinivagasCandidato, ym: YearMonth): boolean {
+  return isDateInYearMonth(item.updated_at || item.created_at || '', ym);
 }
 
 export function filterCandidatosByPeriod(
@@ -280,6 +366,13 @@ export function filterCandidatosByPeriod(
 ): MinivagasCandidato[] {
   if (period === 'all') return list;
   return list.filter((item) => isInCurrentMonth(item));
+}
+
+export function filterCandidatosByYearMonth(
+  list: MinivagasCandidato[],
+  ym: YearMonth
+): MinivagasCandidato[] {
+  return list.filter((item) => isInYearMonth(item, ym));
 }
 
 export async function fetchMinivagasUsers(): Promise<MinivagasUser[]> {
@@ -365,6 +458,22 @@ export function buildHiringStatsByCnpj(
 /** Mínimo de candidatos enviados para calcular e rankear reputação. */
 export const MIN_ENVIADOS_FOR_REPUTATION = 5;
 
+/** Selo a partir da taxa de aproveitamento (0–1). */
+export function labelFromUtilizationRate(
+  rate: number,
+  opts?: { decididos?: number; emFunil?: number }
+): ReputationLabel {
+  // Sem decisão ainda: não inflar com “tudo em entrevista”
+  if ((opts?.decididos ?? 0) === 0 && (opts?.emFunil ?? 0) > 0) {
+    return 'Regular';
+  }
+  if (rate >= 0.4) return 'Excelente';
+  if (rate >= 0.25) return 'Boa';
+  if (rate >= 0.15) return 'Regular';
+  if (rate >= 0.08) return 'Atenção';
+  return 'Crítica';
+}
+
 export function computeReputation(counts: Counts): CompanyReputation {
   const contratados = counts.contratados;
   const reprovados = counts.reprovados;
@@ -377,6 +486,8 @@ export function computeReputation(counts: Counts): CompanyReputation {
     hireRate: null as number | null,
     rejectRate: null as number | null,
     noShowRate: null as number | null,
+    discardRate: null as number | null,
+    utilizationRate: null as number | null,
     score: null as number | null,
     label: 'Sem dados' as ReputationLabel,
   };
@@ -398,16 +509,15 @@ export function computeReputation(counts: Counts): CompanyReputation {
   const hireRate = contratados / enviados;
   const rejectRate = reprovados / enviados;
   const noShowRate = naoCompareceu / enviados;
-  // Reputação = taxa de contratação sobre enviados (0–100).
-  const score = Math.round(hireRate * 100);
+  const discardRate = (reprovados + naoCompareceu) / enviados;
+  // Aproveitamento = base que não foi reprovada nem faltou
+  const utilizationRate = (contratados + emFunil) / enviados;
 
-  let label: ReputationLabel;
-  if (hireRate >= 0.4) label = 'Excelente';
-  else if (hireRate >= 0.25) label = 'Boa';
-  else if (hireRate >= 0.15) label = 'Regular';
-  else if (hireRate >= 0.08) label = 'Atenção';
-  else if (decididos === 0) label = 'Regular';
-  else label = 'Crítica';
+  const score = Math.round(utilizationRate * 100);
+  const label = labelFromUtilizationRate(utilizationRate, {
+    decididos,
+    emFunil,
+  });
 
   return {
     enviados,
@@ -419,6 +529,8 @@ export function computeReputation(counts: Counts): CompanyReputation {
     hireRate,
     rejectRate,
     noShowRate,
+    discardRate,
+    utilizationRate,
     score,
     label,
   };
@@ -582,6 +694,8 @@ function membersForGroupKey(
       naoCompareceu: stats?.naoCompareceu ?? 0,
       emFunil: stats?.emFunil ?? 0,
       hireRate: reputation?.hireRate ?? null,
+      discardRate: reputation?.discardRate ?? null,
+      utilizationRate: reputation?.utilizationRate ?? null,
       volumeCount: volumeByCnpj?.get(cnpjDigits) ?? 0,
     };
   });
@@ -768,10 +882,16 @@ function excludeDecidedFromFunnel(
 }
 
 function isFreezeEntryInMonth(entry: FreezeEntry, now = new Date()): boolean {
-  const raw = entry.outcomeAt || entry.lastSeenAt || entry.firstSeenAt || entry.updatedAtApi || '';
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return false;
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+  return isFreezeEntryInYearMonth(entry, {
+    year: now.getFullYear(),
+    month: now.getMonth() + 1,
+  });
+}
+
+function isFreezeEntryInYearMonth(entry: FreezeEntry, ym: YearMonth): boolean {
+  const raw =
+    entry.outcomeAt || entry.lastSeenAt || entry.firstSeenAt || entry.updatedAtApi || '';
+  return isDateInYearMonth(raw, ym);
 }
 
 /** Espelha a contagem do grupo em cada CNPJ membro (para ficha da empresa). */
@@ -862,6 +982,7 @@ export function buildReputationRanking(
 
   const sorted = rows.sort(
     (a, b) =>
+      (b.reputation.utilizationRate ?? -1) - (a.reputation.utilizationRate ?? -1) ||
       (b.reputation.hireRate ?? -1) - (a.reputation.hireRate ?? -1) ||
       b.reputation.decididos - a.reputation.decididos ||
       b.reputation.enviados - a.reputation.enviados ||
@@ -873,15 +994,15 @@ export function buildReputationRanking(
 export function reputationCriteria(label: ReputationLabel): string {
   switch (label) {
     case 'Excelente':
-      return 'Contratação ≥ 40% dos enviados';
+      return 'Aproveitamento ≥ 40% da base enviada';
     case 'Boa':
-      return 'Contratação entre 25% e 39% dos enviados';
+      return 'Aproveitamento entre 25% e 39% da base enviada';
     case 'Regular':
-      return 'Contratação entre 15% e 24% dos enviados';
+      return 'Aproveitamento entre 15% e 24% (ou só entrevistas em aberto)';
     case 'Atenção':
-      return 'Contratação entre 8% e 14% dos enviados';
+      return 'Aproveitamento entre 8% e 14% da base enviada';
     case 'Crítica':
-      return 'Contratação abaixo de 8% dos enviados';
+      return 'Aproveitamento abaixo de 8% (muita reprovação/falta)';
     default:
       return 'Menos de 5 candidatos enviados (sem taxa)';
   }
@@ -903,6 +1024,34 @@ export type StatusTotals = {
   freezeLastSyncAt: string | null;
 };
 
+/** Dados brutos para remontar rankings de qualquer mês do histórico. */
+export type MinivagasRankingSource = {
+  useFreeze: boolean;
+  freezeEntries: FreezeEntry[];
+  volumeReprovados: MinivagasCandidato[];
+  volumeContratados: MinivagasCandidato[];
+  volumeNaoCompareceu: MinivagasCandidato[];
+  volumeEntrevista: MinivagasCandidato[];
+  reprovadosEmpresa: MinivagasCandidato[];
+  contratados: MinivagasCandidato[];
+  naoCompareceu: MinivagasCandidato[];
+  emEntrevista: MinivagasCandidato[];
+};
+
+export type PeriodRankings = {
+  topRejecters: HiringRankRow[];
+  topHired: HiringRankRow[];
+  topNoShows: HiringRankRow[];
+  topReputation: ReputationRankRow[];
+  totals: {
+    enviados: number;
+    contratados: number;
+    reprovados: number;
+    naoCompareceu: number;
+    emFunil: number;
+  };
+};
+
 export type MinivagasBundle = {
   observacoesByCnpj: Map<string, string>;
   hiringByCnpj: Map<string, Counts>;
@@ -921,6 +1070,8 @@ export type MinivagasBundle = {
   matchedObservacoes: number;
   matchedHiring: number;
   totals: StatusTotals;
+  groupIndex: MinivagasGroupIndex;
+  source: MinivagasRankingSource;
 };
 
 export function rankingsForPeriod(
@@ -945,6 +1096,173 @@ export function rankingsForPeriod(
     topHired: bundle.topHired,
     topNoShows: bundle.topNoShows,
     topReputation: bundle.topReputation,
+  };
+}
+
+function buildPeriodSlice(
+  source: MinivagasRankingSource,
+  ym: YearMonth | null
+): {
+  volumeReprovados: MinivagasCandidato[];
+  volumeContratados: MinivagasCandidato[];
+  volumeNaoCompareceu: MinivagasCandidato[];
+  volumeEntrevista: MinivagasCandidato[];
+  reprovados: MinivagasCandidato[];
+  contratados: MinivagasCandidato[];
+  naoCompareceu: MinivagasCandidato[];
+  emFunil: MinivagasCandidato[];
+} {
+  if (!ym) {
+    return {
+      volumeReprovados: source.volumeReprovados,
+      volumeContratados: source.volumeContratados,
+      volumeNaoCompareceu: source.volumeNaoCompareceu,
+      volumeEntrevista: source.volumeEntrevista,
+      reprovados: source.reprovadosEmpresa,
+      contratados: source.contratados,
+      naoCompareceu: source.naoCompareceu,
+      emFunil: source.emEntrevista,
+    };
+  }
+
+  const volumeReprovados = filterCandidatosByYearMonth(source.volumeReprovados, ym);
+  const volumeContratados = filterCandidatosByYearMonth(source.volumeContratados, ym);
+  const volumeNaoCompareceu = filterCandidatosByYearMonth(source.volumeNaoCompareceu, ym);
+  const volumeEntrevista = filterCandidatosByYearMonth(source.volumeEntrevista, ym);
+
+  if (!source.useFreeze) {
+    return {
+      volumeReprovados,
+      volumeContratados,
+      volumeNaoCompareceu,
+      volumeEntrevista,
+      reprovados: filterCandidatosByYearMonth(source.reprovadosEmpresa, ym),
+      contratados: filterCandidatosByYearMonth(source.contratados, ym),
+      naoCompareceu: filterCandidatosByYearMonth(source.naoCompareceu, ym),
+      emFunil: filterCandidatosByYearMonth(source.emEntrevista, ym),
+    };
+  }
+
+  const freezeMonth = source.freezeEntries.filter((e) => isFreezeEntryInYearMonth(e, ym));
+  const reprovados = mergeCandidatosByJob(
+    volumeReprovados,
+    freezeEntriesToCandidatos(freezeMonth, 'reprovado_empresa')
+  );
+  const contratados = mergeCandidatosByJob(
+    volumeContratados,
+    freezeEntriesToCandidatos(freezeMonth, 'contratado')
+  );
+  const naoCompareceu = mergeCandidatosByJob(
+    volumeNaoCompareceu,
+    freezeEntriesToCandidatos(freezeMonth, 'nao_compareceu_empresa')
+  );
+  const emFunil = excludeDecidedFromFunnel(
+    freezeEntriesToCandidatos(freezeMonth, 'em_funil'),
+    [...reprovados, ...contratados, ...naoCompareceu]
+  );
+
+  return {
+    volumeReprovados,
+    volumeContratados,
+    volumeNaoCompareceu,
+    volumeEntrevista,
+    reprovados,
+    contratados,
+    naoCompareceu,
+    emFunil,
+  };
+}
+
+/** Rankings + totais para Geral ou um mês específico do histórico. */
+export function rankingsForSelection(
+  bundle: MinivagasBundle,
+  companies: Company[],
+  selection: HiringPeriodSelection
+): PeriodRankings {
+  if (selection.type === 'all') {
+    return {
+      topRejecters: bundle.topRejecters,
+      topHired: bundle.topHired,
+      topNoShows: bundle.topNoShows,
+      topReputation: bundle.topReputation,
+      totals: {
+        enviados: bundle.totals.enviados,
+        contratados: bundle.totals.contratados,
+        reprovados: bundle.totals.reprovados,
+        naoCompareceu: bundle.totals.naoCompareceu,
+        emFunil: bundle.totals.emFunil,
+      },
+    };
+  }
+
+  const ym = { year: selection.year, month: selection.month };
+  const slice = buildPeriodSlice(bundle.source, ym);
+  const hiringByCnpj = buildHiringStatsByCnpj(
+    slice.volumeReprovados,
+    slice.volumeContratados,
+    slice.volumeNaoCompareceu,
+    slice.volumeEntrevista
+  );
+  const reputationByGroup = buildReputationStatsByGroup(
+    companies,
+    bundle.groupIndex,
+    slice.reprovados,
+    slice.contratados,
+    slice.naoCompareceu,
+    slice.emFunil
+  );
+  const reputationStatsByCnpj = buildHiringStatsByCnpj(
+    slice.reprovados,
+    slice.contratados,
+    slice.naoCompareceu,
+    slice.emFunil
+  );
+
+  const enviados = bundle.source.useFreeze
+    ? new Set(
+        [...slice.reprovados, ...slice.contratados, ...slice.naoCompareceu, ...slice.emFunil].map(
+          candidatoJobKey
+        )
+      ).size
+    : slice.volumeContratados.length +
+      slice.volumeReprovados.length +
+      slice.volumeNaoCompareceu.length +
+      slice.volumeEntrevista.length;
+
+  return {
+    topRejecters: buildSingleSideRanking(
+      companies,
+      slice.volumeReprovados,
+      bundle.groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topHired: buildSingleSideRanking(
+      companies,
+      slice.volumeContratados,
+      bundle.groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topNoShows: buildSingleSideRanking(
+      companies,
+      slice.volumeNaoCompareceu,
+      bundle.groupIndex,
+      null,
+      hiringByCnpj
+    ),
+    topReputation: buildReputationRanking(companies, bundle.groupIndex, reputationByGroup, {
+      minDecided: 0,
+      minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
+      statsByCnpj: reputationStatsByCnpj,
+    }),
+    totals: {
+      enviados,
+      contratados: slice.volumeContratados.length,
+      reprovados: slice.volumeReprovados.length,
+      naoCompareceu: slice.volumeNaoCompareceu.length,
+      emFunil: slice.emFunil.length,
+    },
   };
 }
 
@@ -1207,6 +1525,19 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
       freezeEntryCount: freezeEntries.length,
       freezeLastSyncAt:
         freezePayload?.lastSyncAt || freezePayload?.updatedAt || new Date().toISOString(),
+    },
+    groupIndex,
+    source: {
+      useFreeze,
+      freezeEntries,
+      volumeReprovados,
+      volumeContratados,
+      volumeNaoCompareceu,
+      volumeEntrevista,
+      reprovadosEmpresa,
+      contratados,
+      naoCompareceu,
+      emEntrevista,
     },
   };
 }
