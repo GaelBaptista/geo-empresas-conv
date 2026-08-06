@@ -46,6 +46,8 @@ export default function App() {
     neighborhoods,
     schedules,
     companiesWithVisitIds,
+    companiesWithVisitTodayIds,
+    companiesWithVisitSoonIds,
     upcomingVisitCount,
     getNextVisitForCompany,
     getMinivagasExtras,
@@ -189,6 +191,8 @@ export default function App() {
             focusMapRequest={focusMapRequest}
             onFocusConsumed={clearFocusMapRequest}
             companiesWithVisitIds={companiesWithVisitIds}
+            companiesWithVisitTodayIds={companiesWithVisitTodayIds}
+            companiesWithVisitSoonIds={companiesWithVisitSoonIds}
             getNextVisitForCompany={getNextVisitForCompany}
             onSelectCompany={setSelectedCompanyForDossier}
             onSelectNeighborhood={setSelectedNeighborhoodId}

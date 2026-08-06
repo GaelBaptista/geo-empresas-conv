@@ -46,6 +46,10 @@ interface MapViewProps {
   focusMapRequest?: FocusMapRequest | null;
   onFocusConsumed?: () => void;
   companiesWithVisitIds?: Set<string>;
+  /** Visitas de hoje → pin amarelo. */
+  companiesWithVisitTodayIds?: Set<string>;
+  /** Visitas futuras → pin azul AGD. */
+  companiesWithVisitSoonIds?: Set<string>;
   getNextVisitForCompany?: (companyId: string) => ScheduleItem | null;
   onSelectCompany: (company: Company) => void;
   onSelectNeighborhood: (id: string) => void;
@@ -68,16 +72,23 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-type PinKind = 'visit' | 'active' | 'inactive';
+type PinKind = 'visitToday' | 'visitSoon' | 'active' | 'inactive';
 
-function pinKind(hasVisit: boolean, hasActive: boolean): PinKind {
-  if (hasVisit) return 'visit';
+function pinKind(
+  visit: 'today' | 'soon' | null,
+  hasActive: boolean
+): PinKind {
+  if (visit === 'today') return 'visitToday';
+  if (visit === 'soon') return 'visitSoon';
   if (hasActive) return 'active';
   return 'inactive';
 }
 
 const PIN_COLORS: Record<PinKind, { pin: string; soft: string; labelBg: string }> = {
-  visit: { pin: '#d97706', soft: '#fffbeb', labelBg: '#fffbeb' },
+  // Hoje: amarelo atual
+  visitToday: { pin: '#d97706', soft: '#fffbeb', labelBg: '#fffbeb' },
+  // Futura: azul (anel/badge AGD) — vira amarelo no dia
+  visitSoon: { pin: '#0284c7', soft: '#f0f9ff', labelBg: '#f0f9ff' },
   active: { pin: '#059669', soft: '#ecfdf5', labelBg: '#ffffff' },
   inactive: { pin: '#dc2626', soft: '#fef2f2', labelBg: '#fef2f2' },
 };
@@ -91,6 +102,13 @@ function getCompanyPinIcon(kind: PinKind, shortLabel: string): L.DivIcon {
   if (cached) return cached;
 
   const { pin: pinColor, soft, labelBg } = PIN_COLORS[kind];
+  const badge =
+    kind === 'visitToday'
+      ? `<span style="position:absolute;top:-4px;right:-9px;font-size:7px;font-weight:800;letter-spacing:.02em;color:#92400e;background:#fde68a;border:1px solid #f59e0b;border-radius:999px;padding:1px 3px;">HOJE</span>`
+      : kind === 'visitSoon'
+        ? `<span style="position:absolute;top:-4px;right:-10px;font-size:7px;font-weight:800;letter-spacing:.02em;color:#075985;background:#e0f2fe;border:1.5px dashed #0284c7;border-radius:999px;padding:1px 3px;">AGD</span>`
+        : '';
+
   const icon = L.divIcon({
     html: `
       <div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;width:132px;">
@@ -100,11 +118,7 @@ function getCompanyPinIcon(kind: PinKind, shortLabel: string): L.DivIcon {
             <circle cx="17" cy="16" r="7.5" fill="${soft}"/>
             <circle cx="17" cy="16" r="3.5" fill="${pinColor}"/>
           </svg>
-          ${
-            kind === 'visit'
-              ? `<span style="position:absolute;top:-4px;right:-9px;font-size:7px;font-weight:800;letter-spacing:.02em;color:#92400e;background:#fde68a;border:1px solid #f59e0b;border-radius:999px;padding:1px 3px;">VIS</span>`
-              : ''
-          }
+          ${badge}
         </div>
         <div style="
           margin-top:1px;max-width:128px;
@@ -113,6 +127,7 @@ function getCompanyPinIcon(kind: PinKind, shortLabel: string): L.DivIcon {
           border:1.5px solid ${pinColor};
           border-radius:7px;padding:2px 6px;
           box-shadow:0 1px 6px rgba(15,23,42,.12);
+          ${kind === 'visitSoon' ? 'border-style:dashed;' : ''}
         ">
           <span style="font-size:10px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(shortLabel)}</span>
         </div>
@@ -156,7 +171,8 @@ function buildCompanyPopupHtml(
   company: Company,
   selectedCity: string,
   nextVisit: ScheduleItem | null,
-  mapsUrl: string
+  mapsUrl: string,
+  visitTiming: 'today' | 'soon' | null = null
 ): string {
   const displayName = getCompanyDisplayName(company);
   const active = company.activeTrainees ?? 0;
@@ -174,6 +190,12 @@ function buildCompanyPopupHtml(
   const place = [company.city || selectedCity, company.neighborhoodName]
     .filter(Boolean)
     .join(' · ');
+  const visitKicker =
+    visitTiming === 'today'
+      ? 'Visita hoje'
+      : visitTiming === 'soon'
+        ? 'Visita agendada'
+        : 'Visita agendada';
 
   return `
     <div class="company-popup">
@@ -225,8 +247,8 @@ function buildCompanyPopupHtml(
         }
         ${
           nextVisit
-            ? `<div class="cp-visit">
-                <p class="cp-visit-kicker">Visita agendada</p>
+            ? `<div class="cp-visit${visitTiming === 'today' ? ' cp-visit--today' : visitTiming === 'soon' ? ' cp-visit--soon' : ''}">
+                <p class="cp-visit-kicker">${escapeHtml(visitKicker)}</p>
                 <p class="cp-visit-date">${escapeHtml(formatScheduleDate(nextVisit.startsAt))}</p>
                 <p class="cp-visit-title">${escapeHtml(nextVisit.title)}</p>
                 ${
@@ -248,7 +270,7 @@ function buildCompanyPopupHtml(
         </a>
       </div>
       <p class="cp-footnote">
-        O pin no mapa é aproximado. Use o Google Maps para a localização exata.
+        O pin no mapa é aproximado (bairro/rua). Use o Google Maps para a localização exata.
       </p>
     </div>
   `;
@@ -263,6 +285,8 @@ export function MapView({
   focusMapRequest,
   onFocusConsumed,
   companiesWithVisitIds,
+  companiesWithVisitTodayIds,
+  companiesWithVisitSoonIds,
   getNextVisitForCompany,
   onSelectCompany,
   onSelectNeighborhood,
@@ -289,6 +313,7 @@ export function MapView({
   const handlersRef = useRef({ onSelectCompany });
   handlersRef.current = { onSelectCompany };
   const skipNeighborhoodFlyRef = useRef(false);
+  const lastMapFlyKeyRef = useRef('');
   const didAutoCityFromGpsRef = useRef(false);
   const userLocationRef = useRef(userLocation);
   userLocationRef.current = userLocation;
@@ -590,6 +615,14 @@ export function MapView({
       return;
     }
 
+    // Só revoa o mapa quando filtros mudam (ou dados passam de vazio → pronto).
+    // Refine de rua atualiza lat/lng sem re-centralizar a câmera.
+    const flyKey = `${selectedNeighborhoodId}|${selectedCity}|${selectedState}|${
+      companiesInCity.length === 0 ? '0' : '1'
+    }`;
+    if (lastMapFlyKeyRef.current === flyKey) return;
+    lastMapFlyKeyRef.current = flyKey;
+
     if (selectedNeighborhoodId && selectedNeighborhoodId !== 'ALL') {
       const neigh = neighborhoods.find((n) => n.id === selectedNeighborhoodId);
       if (neigh) {
@@ -684,7 +717,8 @@ export function MapView({
     if (!map) return;
 
     const gen = ++markerSyncGenRef.current;
-    const visitIds = companiesWithVisitIds;
+    const todayIds = companiesWithVisitTodayIds;
+    const soonIds = companiesWithVisitSoonIds;
     const positionedCompanies = spreadOverlappingCompanies(visibleCompanies);
     const nextIds = new Set(positionedCompanies.map((c) => c.id));
     const byId = new Map<string, Company>();
@@ -705,6 +739,14 @@ export function MapView({
     type Positioned = (typeof positionedCompanies)[number];
     const toCreate: Positioned[] = [];
 
+    const visitTimingFor = (companyId: string): 'today' | 'soon' | null => {
+      if (todayIds?.has(companyId)) return 'today';
+      if (soonIds?.has(companyId)) return 'soon';
+      // fallback legado
+      if (companiesWithVisitIds?.has(companyId)) return 'soon';
+      return null;
+    };
+
     const attachLazyPopup = (marker: L.Marker, companyId: string) => {
       marker.unbindPopup();
       marker.bindPopup('<div style="min-width:120px;padding:8px;color:#64748b;font-size:12px">Carregando…</div>');
@@ -718,7 +760,8 @@ export function MapView({
           company,
           selectedCityRef.current,
           nextVisit,
-          mapsUrl
+          mapsUrl,
+          visitTimingFor(companyId)
         );
         const popup = e.popup;
         popup.setContent(html);
@@ -737,8 +780,8 @@ export function MapView({
       const displayName = getCompanyDisplayName(company);
       const shortLabel = shortCompanyLabel(displayName);
       const hasActive = (company.activeTrainees ?? 0) > 0;
-      const hasVisit = visitIds?.has(company.id) ?? false;
-      const kind = pinKind(hasVisit, hasActive);
+      const visit = visitTimingFor(company.id);
+      const kind = pinKind(visit, hasActive);
       const signature = `${company.mapLat.toFixed(6)}|${company.mapLng.toFixed(6)}|${kind}|${shortLabel}`;
       const existing = markersRef.current[company.id];
 
@@ -765,8 +808,8 @@ export function MapView({
         const displayName = getCompanyDisplayName(company);
         const shortLabel = shortCompanyLabel(displayName);
         const hasActive = (company.activeTrainees ?? 0) > 0;
-        const hasVisit = visitIds?.has(company.id) ?? false;
-        const kind = pinKind(hasVisit, hasActive);
+        const visit = visitTimingFor(company.id);
+        const kind = pinKind(visit, hasActive);
         const signature = `${company.mapLat.toFixed(6)}|${company.mapLng.toFixed(6)}|${kind}|${shortLabel}`;
 
         const marker = L.marker([company.mapLat, company.mapLng], {
@@ -791,7 +834,12 @@ export function MapView({
       // invalida chunks em andamento ao mudar filtros
       markerSyncGenRef.current += 1;
     };
-  }, [visibleCompanies, companiesWithVisitIds]);
+  }, [
+    visibleCompanies,
+    companiesWithVisitIds,
+    companiesWithVisitTodayIds,
+    companiesWithVisitSoonIds,
+  ]);
 
   // Ver no mapa: voa até o pin e abre popup
   useEffect(() => {
@@ -1089,8 +1137,9 @@ export function MapView({
           <div className="flex items-start gap-2 rounded-xl border bg-card/95 backdrop-blur px-3 py-2 shadow-md text-[11px] leading-snug text-muted-foreground">
             <Info className="size-3.5 text-primary shrink-0 mt-0.5" />
             <p>
-              Os pins são <span className="font-medium text-foreground">aproximados</span> (CEP/bairro).
-              Para o endereço certo, abra o <span className="font-medium text-foreground">Google Maps</span> no popup.
+              Os pins começam por <span className="font-medium text-foreground">bairro/CEP</span> e
+              vão sendo refinados por rua em segundo plano. Para o endereço exato, abra o{' '}
+              <span className="font-medium text-foreground">Google Maps</span> no popup.
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -1109,7 +1158,10 @@ export function MapView({
                 <span className="size-2 rounded-full bg-rose-500" /> sem
               </span>
               <span className="inline-flex items-center gap-1">
-                <span className="size-2 rounded-full bg-amber-500" /> visita
+                <span className="size-2 rounded-full bg-sky-500" /> agendada
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-amber-500" /> hoje
               </span>
             </div>
           </div>

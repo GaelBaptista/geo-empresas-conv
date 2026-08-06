@@ -339,6 +339,21 @@ export function companyIdsWithUpcomingVisits(schedules: ScheduleItem[]): Set<str
   return companyIdsWithVisitsInWindow(schedules, 'upcoming');
 }
 
+/** Visitas futuras (a partir de amanhã) — exclui as de hoje. */
+export function companyIdsWithFutureVisits(schedules: ScheduleItem[]): Set<string> {
+  const today = companyIdsWithVisitsInWindow(schedules, 'today');
+  const upcoming = companyIdsWithVisitsInWindow(schedules, 'upcoming');
+  const future = new Set<string>();
+  for (const id of upcoming) {
+    if (!today.has(id)) future.add(id);
+  }
+  return future;
+}
+
+export function companyIdsWithTodayVisits(schedules: ScheduleItem[]): Set<string> {
+  return companyIdsWithVisitsInWindow(schedules, 'today');
+}
+
 export function nextVisitForCompany(
   schedules: ScheduleItem[],
   companyId: string,
@@ -446,11 +461,55 @@ export function googleMapsDestinationUrl(
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
+/**
+ * Endereço limpo só para o Google Maps (sem complemento: sala, apto, bloco…).
+ * O popup/ficha continua mostrando o endereço completo.
+ */
+export function companyAddressForGoogleMaps(company: Company): string {
+  const OTHER = 'outros / sem bairro';
+  const neighborhood = (company.neighborhoodName || '').trim();
+  const skipNeighborhood =
+    !neighborhood || neighborhood.toLowerCase().startsWith('outros') || neighborhood.toLowerCase() === OTHER;
+
+  const street = (company.streetAddress || '').trim();
+  const number = (company.streetNumber || '').trim();
+
+  if (street) {
+    const parts = [
+      number ? `${street}, nº ${number}` : street,
+      skipNeighborhood ? null : neighborhood,
+      company.city && company.state
+        ? `${company.city} - ${company.state}`
+        : company.city || company.state,
+      company.cep ? `CEP ${company.cep}` : null,
+    ].filter(Boolean);
+    return parts.join(', ');
+  }
+
+  // Fallback: tira trechos típicos de complemento do address montado na UI
+  return stripAddressComplement(company.address || '');
+}
+
+function stripAddressComplement(address: string): string {
+  const raw = address.trim();
+  if (!raw) return '';
+
+  // Remove segmentos tipo "Sala 12", "Apto 301", "Bloco B", "Loja 3", etc.
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean);
+  const filtered = parts.filter(
+    (p) =>
+      !/^(sala|apto|apartamento|ap\.?|bloco|bl\.?|loja|andar|cobertura|casa|fundos?|kitnet|conj\.?|conjunto|torre|sobreloja|sl\.?|cj\.?)\b/i.test(
+        p
+      )
+  );
+  return (filtered.length > 0 ? filtered : parts).join(', ');
+}
+
 export function googleMapsCompanyUrl(
   company: Company,
   origin?: { lat: number; lng: number } | null
 ): string {
-  return googleMapsDestinationUrl(company.address, origin);
+  return googleMapsDestinationUrl(companyAddressForGoogleMaps(company), origin);
 }
 
 /** Rota multi-parada partindo do GPS ou de Fortaleza. */

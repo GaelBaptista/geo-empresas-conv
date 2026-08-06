@@ -23,7 +23,7 @@ export const FORTALEZA_NEIGHBORHOODS: Neighborhood[] = [
     id: 'fortaleza_centro',
     name: 'Centro',
     description: 'Coração histórico, órgãos governamentais e comércio tradicional.',
-    center: [-3.7250, -38.5280],
+    center: [-3.7275, -38.5265],
     color: '#ea580c', // Orange
     zone: 'Centro',
     city: 'Fortaleza',

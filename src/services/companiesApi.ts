@@ -1,8 +1,11 @@
 import { api } from '@/lib/api';
 import { PRESET_LOGOS } from '@/data/fortalezaData';
 import {
+  extractNeighborhoodFromText,
+  flushGeocodeCache,
   neighborhoodIdFromName,
-  refineStreetCoordinates,
+  preloadCepCoordinates,
+  refineStreetCoordinatesBatch,
   resolveCoordinatesFast,
   slugifyNeighborhood,
 } from '@/lib/geocode';
@@ -70,8 +73,19 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
         ? `Cidade (${stateUf})`
         : 'Sem cidade');
 
+  // Bairro da API, ou extraído do endereço textual
+  let neighborhoodRaw = (apiCompany.neighborhood || '').trim() || null;
+  if (!isValidNeighborhoodName(neighborhoodRaw || undefined)) {
+    neighborhoodRaw =
+      extractNeighborhoodFromText(
+        apiCompany.address,
+        apiCompany.complement,
+        apiCompany.city
+      ) || neighborhoodRaw;
+  }
+
   const { id: neighborhoodId, name: neighborhoodName } = resolveNeighborhood(
-    apiCompany.neighborhood,
+    neighborhoodRaw,
     cityLabel
   );
 
@@ -81,8 +95,13 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
     id: apiCompany.id,
     cep: apiCompany.cep,
     neighborhood:
-      neighborhoodName === OTHER_NEIGHBORHOOD_NAME ? apiCompany.neighborhood : neighborhoodName,
-    address: apiCompany.address,
+      neighborhoodName === OTHER_NEIGHBORHOOD_NAME
+        ? neighborhoodRaw || extractNeighborhoodFromText(apiCompany.address)
+        : neighborhoodName,
+    // Junta campos para extrair bairro mesmo se neighborhood vier vazio
+    address: [apiCompany.address, apiCompany.neighborhood, apiCompany.city]
+      .filter(Boolean)
+      .join(', '),
     number: apiCompany.number,
     city: cityFromApi || cityLabel,
     state: stateLabel,
@@ -137,117 +156,89 @@ export async function mapApiCompanyToCompany(apiCompany: ApiCompany): Promise<Co
   };
 }
 
-async function mapInBatches(items: ApiCompany[], batchSize = 10): Promise<Company[]> {
+async function mapInBatches(items: ApiCompany[], batchSize = 48): Promise<Company[]> {
   const result: Company[] = [];
   for (let i = 0; i < items.length; i += batchSize) {
     const slice = items.slice(i, i + batchSize);
-    const mapped = await Promise.all(slice.map((item) => mapApiCompanyToCompany(item)));
-    result.push(...mapped);
+    const mapped = await Promise.all(
+      slice.map((item) =>
+        mapApiCompanyToCompany(item).catch((err) => {
+          console.warn('Falha ao mapear empresa', item.id, err);
+          return null;
+        })
+      )
+    );
+    for (const company of mapped) {
+      if (company) result.push(company);
+    }
+    // Cede o event loop entre lotes (evita freeze no load com muitas empresas)
+    if (i + batchSize < items.length) {
+      await new Promise<void>((r) => setTimeout(r, 0));
+    }
   }
+  flushGeocodeCache();
   return result;
 }
 
 export async function fetchCompaniesFromApi(): Promise<Company[]> {
   const { data } = await api.get<ApiCompaniesResponse>('/companies');
   const list = unwrapCompanies(data);
+  // Resolve CEPs UMA vez antes de montar o mapa → pins fixos (sem se mexer ao dar zoom)
+  await preloadCepCoordinates(
+    list.map((c) => ({ cep: c.cep, state: c.state })),
+    { maxMs: 18000, concurrency: 8 }
+  );
   return mapInBatches(list);
+}
+
+/**
+ * Compat / reload manual. Não usa update progressivo.
+ */
+export async function refineCompaniesByCep(
+  companies: Company[],
+  _onUpdate?: (next: Company[]) => void
+): Promise<Company[]> {
+  // Posições já vêm corretas no fetch; não re-mover pins em background.
+  return companies;
 }
 
 export type RefineProgress = { done: number; total: number };
 
 /**
- * Em segundo plano: coloca empresas na rua (Overpass), sem flood.
- * Deduplica por rua+cidade e limita ritmo.
+ * Refine por rua em background (Nominatim, 1/s, cache + validação de bairro).
+ * Atualiza o mapa em lotes — callback recebe só os pins que mudaram.
  */
 export async function refineCompaniesStreetCoords(
   companies: Company[],
-  onUpdate?: (next: Company[]) => void,
-  onProgress?: (progress: RefineProgress) => void
+  onUpdate?: (changed: Array<{ id: string; lat: number; lng: number }>) => void,
+  onProgress?: (progress: RefineProgress) => void,
+  options?: { signal?: AbortSignal; maxMs?: number; priorityIds?: Set<string> | string[] }
 ): Promise<Company[]> {
-  const next = [...companies];
-  let changed = false;
+  if (!companies.length) return companies;
 
-  const seenStreet = new Set<string>();
-  const order = next
-    .map((company, index) => ({ company, index }))
-    .filter(({ company }) => Boolean(company.streetAddress))
-    .sort((a, b) => {
-      // Prioriza Fortaleza no refine (cidade padrão da UI)
-      const aFort = (a.company.city || '').toLowerCase().includes('fortaleza') ? 0 : 1;
-      const bFort = (b.company.city || '').toLowerCase().includes('fortaleza') ? 0 : 1;
-      return aFort - bFort;
-    });
+  const byId = new Map(companies.map((c) => [c.id, { ...c }]));
 
-  const uniqueStreets = new Set(
-    order.map(
-      ({ company }) =>
-        `${(company.streetAddress || '').toLowerCase()}|${(company.city || '').toLowerCase()}`
-    )
-  );
-  const total = uniqueStreets.size;
-  let done = 0;
-  onProgress?.({ done: 0, total });
-
-  for (const { company, index } of order) {
-    const streetKey = `${(company.streetAddress || '').toLowerCase()}|${(company.city || '').toLowerCase()}`;
-    const alreadyDone = seenStreet.has(streetKey);
-    if (alreadyDone) {
-      // Reaproveita coordenada de outra empresa na mesma rua
-      const donor = next.find(
-        (c, i) =>
-          i !== index &&
-          `${(c.streetAddress || '').toLowerCase()}|${(c.city || '').toLowerCase()}` === streetKey &&
-          Math.abs(c.lat - company.lat) + Math.abs(c.lng - company.lng) > 0.001
-      );
-      if (donor) {
-        next[index] = { ...next[index], lat: donor.lat, lng: donor.lng };
-        changed = true;
+  await refineStreetCoordinatesBatch(companies, {
+    signal: options?.signal,
+    maxMs: options?.maxMs,
+    flushEvery: 10,
+    priorityIds: options?.priorityIds,
+    onProgress: (done, total) => onProgress?.({ done, total }),
+    onBatch: (partial) => {
+      if (!partial.length) return;
+      const changed: Array<{ id: string; lat: number; lng: number }> = [];
+      for (const item of partial) {
+        const id = String(item.id);
+        const current = byId.get(id);
+        if (!current) continue;
+        byId.set(id, { ...current, lat: item.lat, lng: item.lng });
+        changed.push({ id, lat: item.lat, lng: item.lng });
       }
-      continue;
-    }
-    seenStreet.add(streetKey);
+      if (changed.length) onUpdate?.(changed);
+    },
+  });
 
-    try {
-      const refined = await refineStreetCoordinates({
-        id: company.apiId ?? company.id,
-        address: company.streetAddress,
-        number: company.streetNumber,
-        neighborhood:
-          company.neighborhoodName === OTHER_NEIGHBORHOOD_NAME ? null : company.neighborhoodName,
-        city: company.city,
-        state: company.state,
-        cep: company.cep,
-      });
-
-      if (
-        refined &&
-        (Math.abs(refined.lat - company.lat) > 0.00008 ||
-          Math.abs(refined.lng - company.lng) > 0.00008)
-      ) {
-        next[index] = { ...next[index], lat: refined.lat, lng: refined.lng };
-        changed = true;
-        // Propaga para outras com a mesma rua
-        for (let j = 0; j < next.length; j++) {
-          if (j === index) continue;
-          const other = next[j];
-          const otherKey = `${(other.streetAddress || '').toLowerCase()}|${(other.city || '').toLowerCase()}`;
-          if (otherKey === streetKey) {
-            next[j] = { ...other, lat: refined.lat, lng: refined.lng };
-          }
-        }
-        onUpdate?.([...next]);
-      }
-    } catch {
-      /* ignora e segue */
-    }
-
-    done += 1;
-    onProgress?.({ done, total });
-  }
-
-  if (changed) onUpdate?.([...next]);
-  onProgress?.({ done: total, total });
-  return next;
+  return companies.map((c) => byId.get(c.id) || c);
 }
 
 export function enrichCompaniesWithGroupsAndContracts(

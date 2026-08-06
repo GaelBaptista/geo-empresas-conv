@@ -3,17 +3,17 @@ import type { Company } from '@/types';
 type PositionedCompany = Company & { mapLat: number; mapLng: number };
 
 function coordKey(lat: number, lng: number): string {
-  // ~11m precision — agrupa pins praticamente no mesmo ponto
-  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  // ~55m — agrupa pins quase no mesmo ponto sem juntar bairros vizinhos
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
 }
 
 /**
- * Espalha empresas com a mesma coordenada em círculo,
- * para não empilhar pins quando o CEP/geocode é idêntico.
+ * Espalha empresas com a mesma coordenada em anéis,
+ * para não empilhar pins quando CEP/bairro colapsam no mesmo ponto.
  */
 export function spreadOverlappingCompanies(
   companies: Company[],
-  radiusDegrees = 0.00045
+  radiusDegrees = 0.0011
 ): PositionedCompany[] {
   const groups = new Map<string, Company[]>();
 
@@ -33,18 +33,19 @@ export function spreadOverlappingCompanies(
       return;
     }
 
-    // círculo + anéis extras se houver muitos
     group.forEach((company, index) => {
-      const ring = Math.floor(index / 8);
-      const indexInRing = index % 8;
-      const countInRing = Math.min(8, group.length - ring * 8);
+      const perRing = 8;
+      const ring = Math.floor(index / perRing);
+      const indexInRing = index % perRing;
+      const countInRing = Math.min(perRing, group.length - ring * perRing);
       const angle = (2 * Math.PI * indexInRing) / countInRing - Math.PI / 2;
-      const radius = radiusDegrees * (ring + 1);
+      // raio cresce mais quando há muitos no mesmo ponto
+      const radius = radiusDegrees * (1 + ring * 1.35) * (1 + Math.min(1.5, group.length / 40));
 
       result.push({
         ...company,
         mapLat: company.lat + Math.sin(angle) * radius,
-        mapLng: company.lng + Math.cos(angle) * radius,
+        mapLng: company.lng + Math.cos(angle) * radius * 1.12,
       });
     });
   });

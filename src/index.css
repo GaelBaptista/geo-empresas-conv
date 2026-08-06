@@ -448,6 +448,50 @@
   box-shadow: 0 2px 8px color-mix(in oklch, var(--primary) 35%, transparent);
 }
 
+.company-popup .cp-visit--today {
+  background: #d97706;
+  color: #fffbeb;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
+}
+
+.company-popup .cp-visit--today .cp-visit-kicker,
+.company-popup .cp-visit--today .cp-visit-title,
+.company-popup .cp-visit--today .cp-visit-obs {
+  color: rgba(255, 251, 235, 0.88);
+}
+
+.company-popup .cp-visit--today .cp-visit-date,
+.company-popup .cp-visit--today .cp-visit-obs strong {
+  color: #fffbeb;
+}
+
+.company-popup .cp-visit--today .cp-visit-obs {
+  border-top-color: rgba(255, 251, 235, 0.28);
+}
+
+.company-popup .cp-visit--soon {
+  background: #0284c7;
+  color: #f0f9ff;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.32);
+  outline: 1.5px dashed rgba(224, 242, 254, 0.55);
+  outline-offset: -4px;
+}
+
+.company-popup .cp-visit--soon .cp-visit-kicker,
+.company-popup .cp-visit--soon .cp-visit-title,
+.company-popup .cp-visit--soon .cp-visit-obs {
+  color: rgba(240, 249, 255, 0.88);
+}
+
+.company-popup .cp-visit--soon .cp-visit-date,
+.company-popup .cp-visit--soon .cp-visit-obs strong {
+  color: #f0f9ff;
+}
+
+.company-popup .cp-visit--soon .cp-visit-obs {
+  border-top-color: rgba(240, 249, 255, 0.28);
+}
+
 .company-popup .cp-visit-kicker {
   margin: 0 0 4px;
   font-size: 9px;

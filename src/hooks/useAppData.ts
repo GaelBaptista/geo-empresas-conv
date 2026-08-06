@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_COMPANIES, FORTALEZA_NEIGHBORHOODS } from '@/data/fortalezaData';
 import { clearLegacyGeocodeCaches } from '@/lib/geocode';
 import {
   applyManualMatches,
+  companyIdsWithFutureVisits,
+  companyIdsWithTodayVisits,
   companyIdsWithUpcomingVisits,
   getVisitSchedulesInWindow,
   matchSchedulesToCompanies,
@@ -18,6 +20,7 @@ import {
   buildNeighborhoodsFromCompanies,
   enrichCompaniesWithGroupsAndContracts,
   fetchCompaniesFromApi,
+  refineCompaniesStreetCoords,
 } from '@/services/companiesApi';
 import {
   countActiveTraineesByCompany,
@@ -60,15 +63,17 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
   const [minivagasError, setMinivagasError] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
   const focusTokenRef = useRef(0);
+  const streetRefineAbortRef = useRef<AbortController | null>(null);
   const companiesRef = useRef(companies);
   companiesRef.current = companies;
 
   /** Refresh silencioso do Minivagas + freeze — a cada 5 min com a aba visível. */
   const MINIVAGAS_REFRESH_MS = 5 * 60 * 1000;
 
+  const deferredCompanies = useDeferredValue(companies);
   const neighborhoods = useMemo(
-    () => buildNeighborhoodsFromCompanies(companies, FORTALEZA_NEIGHBORHOODS),
-    [companies]
+    () => buildNeighborhoodsFromCompanies(deferredCompanies, FORTALEZA_NEIGHBORHOODS),
+    [deferredCompanies]
   );
 
   const matchedSchedules = useMemo(
@@ -79,6 +84,16 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
 
   const companiesWithVisitIds = useMemo(
     () => companyIdsWithUpcomingVisits(matchedSchedules),
+    [matchedSchedules]
+  );
+
+  const companiesWithVisitTodayIds = useMemo(
+    () => companyIdsWithTodayVisits(matchedSchedules),
+    [matchedSchedules]
+  );
+
+  const companiesWithVisitSoonIds = useMemo(
+    () => companyIdsWithFutureVisits(matchedSchedules),
     [matchedSchedules]
   );
 
@@ -182,6 +197,57 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
       setCompanies(enriched);
       setIsLoadingCompanies(false);
 
+      // Refine de rua em background (não bloqueia o mapa).
+      streetRefineAbortRef.current?.abort();
+      const streetAbort = new AbortController();
+      streetRefineAbortRef.current = streetAbort;
+
+      const visitPriorityIds = new Set<string>();
+      if (schedulesResult.status === 'fulfilled') {
+        for (const s of matchSchedulesToCompanies(schedulesResult.value, enriched)) {
+          if (s.matchedCompanyId && s.isVisit) visitPriorityIds.add(s.matchedCompanyId);
+        }
+      }
+
+      const startStreetRefine = () => {
+        if (loadId !== loadRequestIdRef.current || streetAbort.signal.aborted) return;
+        void refineCompaniesStreetCoords(
+          enriched,
+          (changed) => {
+            if (loadId !== loadRequestIdRef.current || streetAbort.signal.aborted) return;
+            if (!changed.length) return;
+            setCompanies((prev) => {
+              const coords = new Map(changed.map((c) => [c.id, c] as const));
+              let any = false;
+              const merged = prev.map((c) => {
+                const p = coords.get(c.id);
+                if (!p) return c;
+                if (Math.abs(p.lat - c.lat) < 1e-7 && Math.abs(p.lng - c.lng) < 1e-7) return c;
+                any = true;
+                return { ...c, lat: p.lat, lng: p.lng };
+              });
+              return any ? merged : prev;
+            });
+          },
+          undefined,
+          {
+            signal: streetAbort.signal,
+            maxMs: 8 * 60 * 1000,
+            priorityIds: visitPriorityIds,
+          }
+        ).catch((err) => {
+          if (streetAbort.signal.aborted) return;
+          console.warn('Refine de rua interrompido/falhou', err);
+        });
+      };
+
+      // Espera o mapa pintar / idle antes de consumir Nominatim
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(() => startStreetRefine(), { timeout: 2500 });
+      } else {
+        window.setTimeout(startStreetRefine, 1200);
+      }
+
       void loadMinivagasBundle(enriched)
         .then((bundle) => {
           if (loadId !== loadRequestIdRef.current) return;
@@ -229,6 +295,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
 
   useEffect(() => {
     if (!enabled) {
+      streetRefineAbortRef.current?.abort();
       setCompanies([]);
       setGroups([]);
       setSchedules([]);
@@ -241,6 +308,9 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     }
     clearLegacyGeocodeCaches();
     void loadCompanies();
+    return () => {
+      streetRefineAbortRef.current?.abort();
+    };
   }, [enabled, loadCompanies]);
 
   useEffect(() => {
@@ -322,6 +392,8 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     neighborhoods,
     schedules: matchedSchedules,
     companiesWithVisitIds,
+    companiesWithVisitTodayIds,
+    companiesWithVisitSoonIds,
     upcomingVisitCount,
     getNextVisitForCompany,
     getMinivagasExtras,
