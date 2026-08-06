@@ -255,11 +255,28 @@ export function CompanyDetailSheet({
                       minivagasExtras.enviados > 0 ||
                       minivagasExtras.reprovadosMes > 0 ||
                       minivagasExtras.contratadosMes > 0 ||
-                      minivagasExtras.naoCompareceuMes > 0))) && (
+                      minivagasExtras.naoCompareceuMes > 0 ||
+                      (minivagasExtras.recruiters?.length ?? 0) > 0))) && (
                   <div className="space-y-3">
+                    {(minivagasExtras.recruiters?.length ?? 0) > 0 && (
+                      <Card className="border-teal-300/80 bg-teal-50/90 shadow-none dark:border-teal-700/70 dark:bg-teal-950/40">
+                        <CardContent className="py-3.5 px-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800/80 dark:text-teal-200/80">
+                            Recrutador
+                          </p>
+                          <p className="text-base font-bold text-teal-950 dark:text-teal-50 mt-1">
+                            {minivagasExtras.recruiters!.join(' · ')}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {minivagasExtras.reputation &&
                       minivagasExtras.reputation.score != null && (
-                        <CompanyReputationCard reputation={minivagasExtras.reputation} />
+                        <CompanyReputationCard
+                          reputation={minivagasExtras.reputation}
+                          recruiters={minivagasExtras.recruiters}
+                        />
                       )}
 
                     <Card className="border-border/80 bg-muted/40 dark:bg-muted/25 shadow-none">

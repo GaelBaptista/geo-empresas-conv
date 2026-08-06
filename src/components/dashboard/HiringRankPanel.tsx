@@ -11,9 +11,12 @@ import {
   Users,
   ChevronRight,
   CalendarRange,
+  UserRound,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { RankingExportMenu } from '@/components/dashboard/RankingExportMenu';
+import type { RankingExportRow } from '@/lib/ranking-export';
 import {
   Pagination,
   PaginationContent,
@@ -41,6 +44,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatSyncAgo } from '@/lib/format-relative';
 import {
+  formatRecruitersLabel,
   listRankingPeriodOptions,
   periodKey,
   rankingsForSelection,
@@ -214,6 +218,44 @@ export function HiringRankPanel({
     () => filteredVolume.slice(pageStart, pageStart + PAGE_SIZE),
     [filteredVolume, pageStart]
   );
+
+  const exportRows = useMemo((): RankingExportRow[] => {
+    if (view === 'reputation') {
+      return filteredReputation.map((row, index) => {
+        const r = row.reputation;
+        return {
+          rank: index + 1,
+          empresa: row.companyName,
+          recrutador: row.recruiters.join(' · '),
+          aproveitamento: pctLabel(r.utilizationRate),
+          contratacao: pctLabel(r.hireRate),
+          classificacao: r.label,
+          enviados: r.enviados,
+          contratados: r.contratados,
+          reprovados: r.reprovados,
+          faltas: r.naoCompareceu,
+          entrevista: r.emFunil,
+          unidades: row.memberCount,
+          volume: '',
+        };
+      });
+    }
+    return filteredVolume.map((row, index) => ({
+      rank: index + 1,
+      empresa: row.companyName,
+      recrutador: row.recruiters.join(' · '),
+      aproveitamento: '',
+      contratacao: '',
+      classificacao: '',
+      enviados: '',
+      contratados: '',
+      reprovados: '',
+      faltas: '',
+      entrevista: '',
+      unidades: row.memberCount,
+      volume: row.count,
+    }));
+  }, [view, filteredReputation, filteredVolume]);
 
   const activePeriodKey = periodKey(periodSelection);
   const activePeriodLabel =
@@ -418,28 +460,36 @@ export function HiringRankPanel({
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">{listEyebrow}</p>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto sm:max-w-sm">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar grupo, unidade ou CNPJ…"
-                  className="pl-9 bg-background h-10"
-                />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center w-full sm:w-auto">
+              <div className="flex items-center gap-2 flex-1 sm:max-w-sm">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar grupo, unidade ou CNPJ…"
+                    className="pl-9 bg-background h-10"
+                  />
+                </div>
+                <Badge variant="secondary" className="shrink-0 tabular-nums h-10 px-3 text-xs">
+                  {filteredCount.toLocaleString('pt-BR')}
+                </Badge>
               </div>
-              <Badge variant="secondary" className="shrink-0 tabular-nums h-10 px-3 text-xs">
-                {filteredCount.toLocaleString('pt-BR')}
-              </Badge>
+              <RankingExportMenu
+                mode={view === 'reputation' ? 'reputation' : 'volume'}
+                periodLabel={activePeriodLabel}
+                viewLabel={views.find((v) => v.id === view)?.label ?? view}
+                rows={exportRows}
+              />
             </div>
           </div>
 
           {view === 'reputation' ? (
             <p className="text-[11px] text-muted-foreground leading-relaxed rounded-lg bg-muted/50 px-3 py-2">
-              <span className="font-semibold text-foreground">Aproveitamento</span> = (contratados +
-              entrevista) ÷ enviados ·{' '}
-              <span className="font-semibold text-foreground">Contratação</span> = contratados ÷
-              enviados (secundária)
+              <span className="font-semibold text-foreground">Aproveitamento</span> (principal) =
+              (contratados + entrevista) ÷ enviados — se ainda não houver resultado, fica 0%.{' '}
+              <span className="font-semibold text-foreground">Contratação</span> (sutil) = contratados
+              ÷ enviados. Só grupos com <strong>5+ enviados</strong>.
             </p>
           ) : null}
         </div>
@@ -627,6 +677,22 @@ function ResultChips({
   );
 }
 
+function RecruiterChip({ names, className }: { names: string[]; className?: string }) {
+  if (names.length === 0) return null;
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center gap-1.5 rounded-lg border border-teal-300/80 bg-teal-50 px-2.5 py-1',
+        'text-xs font-semibold text-teal-900 dark:border-teal-700/70 dark:bg-teal-950/55 dark:text-teal-100',
+        className
+      )}
+    >
+      <UserRound className="size-3.5 shrink-0" />
+      <span className="truncate">{formatRecruitersLabel(names)}</span>
+    </span>
+  );
+}
+
 function RankIndex({ rank }: { rank: number }) {
   const podium = rank <= 3;
   return (
@@ -697,6 +763,7 @@ function ReputationBoard({
                         {r.label}
                       </Badge>
                     </div>
+                    <RecruiterChip names={row.recruiters} />
                     <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
                       <Users className="size-3 shrink-0" />
                       {row.memberCount > 1
@@ -732,6 +799,14 @@ function ReputationBoard({
                       <span className="font-semibold tabular-nums text-foreground/75">
                         {pctLabel(r.hireRate)}
                       </span>
+                      {r.emFunil > 0 ? (
+                        <>
+                          {' '}
+                          ·{' '}
+                          <span className="tabular-nums text-foreground/70">{r.emFunil}</span> em
+                          entrevista
+                        </>
+                      ) : null}
                     </p>
                   </div>
                   <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border bg-muted/40 text-muted-foreground transition-all group-hover:border-primary/40 group-hover:bg-primary/10 group-hover:text-primary">
@@ -819,6 +894,7 @@ function VolumeBoard({
                         : `1 unidade${row.onMap ? '' : ' · fora do mapa'}`}
                     </p>
                   </div>
+                  <RecruiterChip names={row.recruiters} />
                   <div className="h-2 max-w-md rounded-full bg-muted overflow-hidden">
                     <div
                       className={cn('h-full rounded-full transition-all', bar)}
@@ -976,20 +1052,23 @@ function GroupUnitsSheet({
                             CNPJ {formatCnpj(member.cnpjDigits)}
                             {member.onMap ? '' : ' · fora do mapa'}
                           </p>
-                        </div>
-                        {mode === 'reputation' && member.utilizationRate != null ? (
-                          <div className="shrink-0 text-right">
-                            <p className="text-lg font-semibold tabular-nums text-primary leading-none">
-                              {pctLabel(member.utilizationRate)}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              aproveit.
-                              {member.hireRate != null
-                                ? ` · ${pctLabel(member.hireRate)} contr.`
-                                : ''}
-                            </p>
+                          <div className="pt-1">
+                            <RecruiterChip names={member.recruiters} />
                           </div>
-                        ) : null}
+                        </div>
+                          {mode === 'reputation' && member.utilizationRate != null ? (
+                            <div className="shrink-0 text-right">
+                              <p className="text-lg font-semibold tabular-nums text-primary leading-none">
+                                {pctLabel(member.utilizationRate)}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">
+                                aproveit.
+                                {member.hireRate != null
+                                  ? ` · contrat. ${pctLabel(member.hireRate)}`
+                                  : ''}
+                              </p>
+                            </div>
+                          ) : null}
                         {mode === 'volume' && member.volumeCount > 0 ? (
                           <div className="shrink-0 text-right">
                             <p

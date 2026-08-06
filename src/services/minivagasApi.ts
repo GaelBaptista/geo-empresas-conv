@@ -29,6 +29,18 @@ export type MinivagasUser = {
   observacoes?: string | null;
 };
 
+/** Processo seletivo (vaga) — fonte do recrutador. */
+export type MinivagasProcessoSeletivo = {
+  id: number;
+  recrutador?: string | null;
+  rh_recruiter?: string | null;
+  company_name?: string | null;
+  cnpj?: string | null;
+  status?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
 export type MinivagasCandidato = {
   id: number;
   job_posting_id?: number;
@@ -64,11 +76,12 @@ export type CompanyReputation = {
   hireRate: number | null;
   rejectRate: number | null;
   noShowRate: number | null;
-  /** (reprovados + faltas) / enviados — inverso do aproveitamento */
+  /** (reprovados + faltas) / enviados */
   discardRate: number | null;
   /**
-   * Taxa de aproveitamento: (contratados + em entrevista) / enviados
-   * = quanto da base enviada não foi descartada (reprovada/falta).
+   * Taxa de aproveitamento da base enviada:
+   * (contratados + em entrevista) / enviados — quanto ainda está em jogo ou já foi aproveitado.
+   * Se ainda não houver nenhum resultado (só entrevista), fica 0% (não começa em 100%).
    * A reputação e a ordem do ranking usam esta taxa.
    */
   utilizationRate: number | null;
@@ -89,6 +102,8 @@ export type CompanyMinivagasExtras = {
   emFunil: number;
   reputation: CompanyReputation | null;
   minivagasName?: string;
+  /** Recrutadores dos processos seletivos deste CNPJ. */
+  recruiters?: string[];
 };
 
 /** Unidade (CNPJ) dentro de um grupo Minivagas. */
@@ -97,6 +112,8 @@ export type GroupMemberRef = {
   companyId: string | null;
   companyName: string;
   onMap: boolean;
+  /** Recrutadores dos processos seletivos deste CNPJ. */
+  recruiters: string[];
   /** Métricas só deste CNPJ (não do grupo). */
   contratados: number;
   reprovados: number;
@@ -122,6 +139,8 @@ export type HiringRankRow = {
   companyName: string;
   count: number;
   onMap: boolean;
+  /** Recrutadores únicos do grupo (união dos CNPJs). */
+  recruiters: string[];
 };
 
 export type ReputationRankRow = {
@@ -135,6 +154,8 @@ export type ReputationRankRow = {
   companyName: string;
   onMap: boolean;
   reputation: CompanyReputation;
+  /** Recrutadores únicos do grupo (união dos CNPJs). */
+  recruiters: string[];
 };
 
 type MinivagasGroupMeta = {
@@ -380,6 +401,81 @@ export async function fetchMinivagasUsers(): Promise<MinivagasUser[]> {
   return items;
 }
 
+export async function fetchProcessosSeletivos(): Promise<MinivagasProcessoSeletivo[]> {
+  try {
+    const { items } = await fetchAllPages<MinivagasProcessoSeletivo>('/processos_seletivos');
+    return items;
+  } catch (err) {
+    console.warn('[minivagas] falha ao carregar processos_seletivos (recrutadores)', err);
+    return [];
+  }
+}
+
+/** Nome limpo do recrutador (ignora vazio / "null"). */
+function normalizeRecruiterName(value: string | null | undefined): string {
+  const name = (value || '').trim().replace(/\s+/g, ' ');
+  if (!name) return '';
+  if (/^(null|undefined|-|n\/a)$/i.test(name)) return '';
+  return name;
+}
+
+/**
+ * CNPJ → lista de recrutadores únicos (processos seletivos).
+ * Mais recentes primeiro; nomes ordenados alfabeticamente na lista final.
+ */
+export function buildRecruitersByCnpj(
+  processos: MinivagasProcessoSeletivo[]
+): Map<string, string[]> {
+  const ranked = [...processos].sort((a, b) => {
+    const ta = Date.parse(b.updated_at || b.created_at || '') || 0;
+    const tb = Date.parse(a.updated_at || a.created_at || '') || 0;
+    return ta - tb;
+  });
+
+  const byCnpj = new Map<string, string[]>();
+  for (const processo of ranked) {
+    const cnpj = normalizeCnpj(processo.cnpj);
+    if (cnpj.length < 11) continue;
+    const name =
+      normalizeRecruiterName(processo.recrutador) ||
+      normalizeRecruiterName(processo.rh_recruiter);
+    if (!name) continue;
+    const list = byCnpj.get(cnpj) || [];
+    if (!list.some((n) => n.toLowerCase() === name.toLowerCase())) {
+      list.push(name);
+      byCnpj.set(cnpj, list);
+    }
+  }
+
+  for (const [cnpj, list] of byCnpj) {
+    byCnpj.set(
+      cnpj,
+      [...list].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    );
+  }
+  return byCnpj;
+}
+
+export function unionRecruiterNames(...lists: Array<string[] | undefined>): string[] {
+  const set = new Map<string, string>();
+  for (const list of lists) {
+    for (const raw of list || []) {
+      const name = normalizeRecruiterName(raw);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (!set.has(key)) set.set(key, name);
+    }
+  }
+  return Array.from(set.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+export function formatRecruitersLabel(names: string[]): string {
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} · ${names[1]}`;
+  return `${names[0]} +${names.length - 1}`;
+}
+
 export async function fetchCandidatosByStatus(
   status: string
 ): Promise<{ items: MinivagasCandidato[]; reportedTotal: number | null }> {
@@ -492,6 +588,18 @@ export function computeReputation(counts: Counts): CompanyReputation {
     label: 'Sem dados' as ReputationLabel,
   };
 
+  if (enviados <= 0) {
+    return {
+      enviados: 0,
+      emFunil: 0,
+      contratados: 0,
+      reprovados: 0,
+      naoCompareceu: 0,
+      decididos: 0,
+      ...emptyRates,
+    };
+  }
+
   // Amostra pequena: conta volume, mas sem taxa/nota (não entra no ranking).
   if (enviados < MIN_ENVIADOS_FOR_REPUTATION) {
     return {
@@ -510,8 +618,9 @@ export function computeReputation(counts: Counts): CompanyReputation {
   const rejectRate = reprovados / enviados;
   const noShowRate = naoCompareceu / enviados;
   const discardRate = (reprovados + naoCompareceu) / enviados;
-  // Aproveitamento = base que não foi reprovada nem faltou
-  const utilizationRate = (contratados + emFunil) / enviados;
+  // Aproveitamento = base não descartada. Sem nenhum resultado ainda → 0% (não 100%).
+  const utilizationRate =
+    decididos === 0 ? 0 : (contratados + emFunil) / enviados;
 
   const score = Math.round(utilizationRate * 100);
   const label = labelFromUtilizationRate(utilizationRate, {
@@ -558,7 +667,8 @@ export function extrasForCompany(
   hiringByCnpj: Map<string, Counts>,
   hiringByCnpjMonth: Map<string, Counts>,
   reputationByCnpj?: Map<string, Counts> | null,
-  reputationByCnpjMonth?: Map<string, Counts> | null
+  reputationByCnpjMonth?: Map<string, Counts> | null,
+  recruitersByCnpj?: Map<string, string[]> | null
 ): CompanyMinivagasExtras | null {
   const digits = normalizeCnpj(company.cnpj);
   if (!digits) return null;
@@ -570,8 +680,11 @@ export function extrasForCompany(
     reputationByCnpj?.get(digits) || hiring || null;
   const reputationCountsMonth =
     reputationByCnpjMonth?.get(digits) || hiringMonth || null;
+  const recruiters = recruitersByCnpj?.get(digits) || [];
 
-  if (!observacoes && !hiring && !hiringMonth && !reputationCounts) return null;
+  if (!observacoes && !hiring && !hiringMonth && !reputationCounts && recruiters.length === 0) {
+    return null;
+  }
 
   const reputation = reputationCounts ? computeReputation(reputationCounts) : null;
 
@@ -588,6 +701,7 @@ export function extrasForCompany(
     reputation,
     minivagasName:
       reputationCounts?.name || hiring?.name || hiringMonth?.name || reputationCountsMonth?.name,
+    recruiters,
   };
 }
 
@@ -658,7 +772,8 @@ function membersForGroupKey(
   companyByCnpj: Map<string, Company>,
   extraCnpjs: string[] = [],
   statsByCnpj?: Map<string, Counts>,
-  volumeByCnpj?: Map<string, number>
+  volumeByCnpj?: Map<string, number>,
+  recruitersByCnpj?: Map<string, string[]>
 ): GroupMemberRef[] {
   const meta = index.groups.get(groupKey);
   let cnpjs: string[] = [];
@@ -689,6 +804,7 @@ function membersForGroupKey(
         ? matched.tradeName || matched.name
         : stats?.name || `CNPJ ${cnpjDigits}`,
       onMap: Boolean(matched),
+      recruiters: recruitersByCnpj?.get(cnpjDigits) || [],
       contratados: stats?.contratados ?? 0,
       reprovados: stats?.reprovados ?? 0,
       naoCompareceu: stats?.naoCompareceu ?? 0,
@@ -733,7 +849,8 @@ export function buildSingleSideRanking(
   list: MinivagasCandidato[],
   index: MinivagasGroupIndex,
   limit: number | null = null,
-  statsByCnpj?: Map<string, Counts>
+  statsByCnpj?: Map<string, Counts>,
+  recruitersByCnpj?: Map<string, string[]>
 ): HiringRankRow[] {
   const companyByCnpj = companyByCnpjMap(companies);
   const byGroup = new Map<string, { count: number; name: string; cnpjs: Set<string> }>();
@@ -763,9 +880,11 @@ export function buildSingleSideRanking(
       companyByCnpj,
       [...data.cnpjs],
       statsByCnpj,
-      volumeByCnpj
+      volumeByCnpj,
+      recruitersByCnpj
     );
     const rep = pickRepresentative(members);
+    const recruiters = unionRecruiterNames(...members.map((m) => m.recruiters));
     rows.push({
       groupKey,
       groupId: parseMinivagasGroupId(groupKey),
@@ -776,6 +895,7 @@ export function buildSingleSideRanking(
       companyName: data.name,
       count: data.count,
       onMap: Boolean(rep?.onMap),
+      recruiters,
     });
   }
 
@@ -932,14 +1052,19 @@ export function buildReputationRanking(
   index: MinivagasGroupIndex,
   hiringByGroup: Map<string, Counts>,
   options?: {
-    /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 0 = só o piso de enviados. */
+    /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 0 = qualquer movimentação. */
     minDecided?: number;
-    /** Mínimo de candidatos enviados. Padrão: MIN_ENVIADOS_FOR_REPUTATION (5). */
+    /**
+     * Mínimo de candidatos enviados (decididos + entrevista).
+     * Padrão: MIN_ENVIADOS_FOR_REPUTATION (5).
+     */
     minEnviados?: number;
     /** null = lista completa. */
     limit?: number | null;
     /** Contagens reais por CNPJ (não espelho do grupo). */
     statsByCnpj?: Map<string, Counts>;
+    /** Recrutadores por CNPJ (processos seletivos). */
+    recruitersByCnpj?: Map<string, string[]>;
   }
 ): ReputationRankRow[] {
   const minDecided = options?.minDecided ?? 0;
@@ -947,13 +1072,14 @@ export function buildReputationRanking(
   const limit = options?.limit ?? null;
   const companyByCnpj = companyByCnpjMap(companies);
   const statsByCnpj = options?.statsByCnpj;
+  const recruitersByCnpj = options?.recruitersByCnpj;
 
   const rows: ReputationRankRow[] = [];
   for (const [groupKey, counts] of hiringByGroup.entries()) {
     const reputation = computeReputation(counts);
-    // Só entra com amostra mínima de enviados (evita taxa enviesada com 1–4 casos).
+    // Só grupos com amostra mínima (5+ enviados). Inclui quem está só em entrevista.
     if ((reputation.enviados || 0) < minEnviados) continue;
-    if (reputation.hireRate == null) continue;
+    if (reputation.utilizationRate == null && reputation.hireRate == null) continue;
     if ((reputation.decididos || 0) < minDecided && (reputation.emFunil || 0) === 0) {
       continue;
     }
@@ -963,9 +1089,12 @@ export function buildReputationRanking(
       index,
       companyByCnpj,
       [],
-      statsByCnpj
+      statsByCnpj,
+      undefined,
+      recruitersByCnpj
     );
     const rep = pickRepresentative(members);
+    const recruiters = unionRecruiterNames(...members.map((m) => m.recruiters));
 
     rows.push({
       groupKey,
@@ -977,6 +1106,7 @@ export function buildReputationRanking(
       companyName: counts.name,
       onMap: Boolean(rep?.onMap),
       reputation,
+      recruiters,
     });
   }
 
@@ -998,11 +1128,11 @@ export function reputationCriteria(label: ReputationLabel): string {
     case 'Boa':
       return 'Aproveitamento entre 25% e 39% da base enviada';
     case 'Regular':
-      return 'Aproveitamento entre 15% e 24% (ou só entrevistas em aberto)';
+      return 'Aproveitamento entre 15% e 24% da base enviada';
     case 'Atenção':
       return 'Aproveitamento entre 8% e 14% da base enviada';
     case 'Crítica':
-      return 'Aproveitamento abaixo de 8% (muita reprovação/falta)';
+      return 'Aproveitamento abaixo de 8% da base enviada';
     default:
       return 'Menos de 5 candidatos enviados (sem taxa)';
   }
@@ -1059,6 +1189,8 @@ export type MinivagasBundle = {
   /** Contagens de reputação (pós-entrevista) espelhadas por CNPJ do grupo. */
   reputationByCnpj: Map<string, Counts>;
   reputationByCnpjMonth: Map<string, Counts>;
+  /** Recrutadores por CNPJ (processos seletivos). */
+  recruitersByCnpj: Map<string, string[]>;
   topRejecters: HiringRankRow[];
   topHired: HiringRankRow[];
   topNoShows: HiringRankRow[];
@@ -1235,26 +1367,30 @@ export function rankingsForSelection(
       slice.volumeReprovados,
       bundle.groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      bundle.recruitersByCnpj
     ),
     topHired: buildSingleSideRanking(
       companies,
       slice.volumeContratados,
       bundle.groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      bundle.recruitersByCnpj
     ),
     topNoShows: buildSingleSideRanking(
       companies,
       slice.volumeNaoCompareceu,
       bundle.groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      bundle.recruitersByCnpj
     ),
     topReputation: buildReputationRanking(companies, bundle.groupIndex, reputationByGroup, {
       minDecided: 0,
       minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
       statsByCnpj: reputationStatsByCnpj,
+      recruitersByCnpj: bundle.recruitersByCnpj,
     }),
     totals: {
       enviados,
@@ -1296,6 +1432,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     naoCompareceuRes,
     entrevistaLive,
     freezePayload,
+    processosSeletivos,
   ] = await Promise.all([
     fetchMinivagasUsers(),
     fetchCandidatosByStatus('reprovado_empresa'),
@@ -1303,7 +1440,10 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     fetchCandidatosByStatus('nao_compareceu_empresa'),
     fetchEntrevistaStatuses(),
     fetchEntrevistaFreeze(),
+    fetchProcessosSeletivos(),
   ]);
+
+  const recruitersByCnpj = buildRecruitersByCnpj(processosSeletivos);
 
   const freezeEntries = freezePayload?.entries || [];
   const useFreeze = freezeEntries.length > 0;
@@ -1447,57 +1587,66 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     hiringByCnpjMonth,
     reputationByCnpj,
     reputationByCnpjMonth,
+    recruitersByCnpj,
     topRejecters: buildSingleSideRanking(
       companies,
       volumeReprovados,
       groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      recruitersByCnpj
     ),
     topHired: buildSingleSideRanking(
       companies,
       volumeContratados,
       groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      recruitersByCnpj
     ),
     topNoShows: buildSingleSideRanking(
       companies,
       volumeNaoCompareceu,
       groupIndex,
       null,
-      hiringByCnpj
+      hiringByCnpj,
+      recruitersByCnpj
     ),
     topRejectersMonth: buildSingleSideRanking(
       companies,
       volumeReprovadosMes,
       groupIndex,
       null,
-      hiringByCnpjMonth
+      hiringByCnpjMonth,
+      recruitersByCnpj
     ),
     topHiredMonth: buildSingleSideRanking(
       companies,
       volumeContratadosMes,
       groupIndex,
       null,
-      hiringByCnpjMonth
+      hiringByCnpjMonth,
+      recruitersByCnpj
     ),
     topNoShowsMonth: buildSingleSideRanking(
       companies,
       volumeNaoCompareceuMes,
       groupIndex,
       null,
-      hiringByCnpjMonth
+      hiringByCnpjMonth,
+      recruitersByCnpj
     ),
     topReputation: buildReputationRanking(companies, groupIndex, reputationByGroup, {
       minDecided: 0,
       minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
       statsByCnpj: reputationStatsByCnpj,
+      recruitersByCnpj,
     }),
     topReputationMonth: buildReputationRanking(companies, groupIndex, reputationByGroupMonth, {
       minDecided: 0,
       minEnviados: MIN_ENVIADOS_FOR_REPUTATION,
       statsByCnpj: reputationStatsByCnpjMonth,
+      recruitersByCnpj,
     }),
     matchedObservacoes,
     matchedHiring,

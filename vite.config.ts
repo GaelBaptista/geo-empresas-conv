@@ -11,6 +11,7 @@ function isAllowedMinivagasPath(apiPath: string): boolean {
     return false;
   }
   if (apiPath === '/users') return true;
+  if (apiPath === '/processos_seletivos') return true;
   if (/^\/candidatos\/status\/[a-z0-9_]+$/i.test(apiPath)) return true;
   return false;
 }

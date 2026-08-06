@@ -24,6 +24,7 @@ function isAllowedPath(path: string): boolean {
   if (!path.startsWith('/')) return false;
   if (path.includes('..') || path.includes('//') || path.includes('\\')) return false;
   if (path === '/users') return true;
+  if (path === '/processos_seletivos') return true;
   if (/^\/candidatos\/status\/[a-z0-9_]+$/i.test(path)) return true;
   return false;
 }

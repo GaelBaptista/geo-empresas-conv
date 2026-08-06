@@ -174,7 +174,7 @@ function buildDocDefinition(
                 margin: [0, 10, 0, 0] as [number, number, number, number],
               },
               {
-                text: `Nota de reputação = % de contratação · ${reputation.emFunil} ainda em entrevista`,
+                text: `Aproveitamento = (contratados + entrevista) ÷ enviados · Contratação = contratados ÷ enviados · ${reputation.emFunil} em entrevista`,
                 style: 'muted',
                 margin: [0, 4, 0, 0] as [number, number, number, number],
               },

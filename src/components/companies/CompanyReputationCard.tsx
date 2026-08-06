@@ -12,9 +12,11 @@ function pct(value: number | null): string {
 
 export function CompanyReputationCard({
   reputation,
+  recruiters,
   className,
 }: {
   reputation: CompanyReputation;
+  recruiters?: string[];
   className?: string;
 }) {
   const hirePct =
@@ -41,6 +43,16 @@ export function CompanyReputationCard({
           <p className="text-[11px] opacity-80 mt-1 leading-relaxed">
             Reputação pela taxa de aproveitamento da base enviada.
           </p>
+          {(recruiters?.length ?? 0) > 0 ? (
+            <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-teal-400/70 bg-white/70 px-2.5 py-1.5 dark:bg-black/25">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-teal-800/80 dark:text-teal-200/80">
+                Recrutador
+              </span>
+              <span className="text-sm font-bold text-teal-950 dark:text-teal-50 truncate">
+                {recruiters!.join(' · ')}
+              </span>
+            </div>
+          ) : null}
         </div>
         <div className="text-right shrink-0">
           <p className="text-3xl font-bold tabular-nums leading-none">
@@ -87,9 +99,8 @@ export function CompanyReputationCard({
             />
           </div>
           <p className="text-[10px] opacity-70">
-            % sobre {reputation.enviados} enviado
-            {reputation.enviados === 1 ? '' : 's'} · {reputation.emFunil} ainda em
-            entrevista · nota = % de contratação
+            Aproveitamento = (contratados + entrevista) ÷ enviados · Contratação = contratados ÷
+            enviados · {reputation.emFunil} em entrevista
           </p>
         </div>
       )}
