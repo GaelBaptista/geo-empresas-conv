@@ -67,7 +67,7 @@ export const VIEW_META = {
     description: 'Agendamentos do Estagius (somente leitura)',
   },
   ranking: {
-    title: 'Ranking Minivagas',
+    title: 'Ranking DrVagas',
     description: 'Empresas que mais aprovam e reprovam candidatos',
   },
 } as const;

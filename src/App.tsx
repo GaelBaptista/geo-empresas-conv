@@ -50,9 +50,9 @@ export default function App() {
     companiesWithVisitSoonIds,
     upcomingVisitCount,
     getNextVisitForCompany,
-    getMinivagasExtras,
-    minivagas,
-    minivagasError,
+    getDrvagasExtras,
+    drvagas,
+    drvagasError,
     activeView,
     setActiveView,
     selectedNeighborhoodId,
@@ -225,22 +225,22 @@ export default function App() {
 
         {activeView === 'ranking' && (
           <div className="w-full max-w-none space-y-4">
-            {minivagasError && (
+            {drvagasError && (
               <Card className="border-orange-200 bg-orange-50 dark:border-orange-800/50 dark:bg-orange-950/40">
-                <CardContent className="p-3 text-sm text-orange-950 dark:text-orange-100">{minivagasError}</CardContent>
+                <CardContent className="p-3 text-sm text-orange-950 dark:text-orange-100">{drvagasError}</CardContent>
               </Card>
             )}
-            {!minivagas && !minivagasError && (
+            {!drvagas && !drvagasError && (
               <Card>
                 <CardContent className="p-4 text-sm text-muted-foreground flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin" />
-                  Carregando ranking do Minivagas...
+                  Carregando ranking do DrVagas...
                 </CardContent>
               </Card>
             )}
-            {minivagas && (
+            {drvagas && (
               <HiringRankPanel
-                bundle={minivagas}
+                bundle={drvagas}
                 companies={companies}
                 onSelectCompany={setSelectedCompanyForDossier}
               />
@@ -252,8 +252,8 @@ export default function App() {
       <CompanyDetailSheet
         company={selectedCompanyForDossier}
         schedules={schedules}
-        minivagasExtras={
-          selectedCompanyForDossier ? getMinivagasExtras(selectedCompanyForDossier) : null
+        drvagasExtras={
+          selectedCompanyForDossier ? getDrvagasExtras(selectedCompanyForDossier) : null
         }
         onClose={() => setSelectedCompanyForDossier(null)}
         onFocusOnMap={handleFocusOnMap}

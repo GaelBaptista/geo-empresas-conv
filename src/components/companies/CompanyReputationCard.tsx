@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import {
   reputationTone,
   type CompanyReputation,
-} from '@/services/minivagasApi';
+} from '@/services/drvagasApi';
 
 function pct(value: number | null): string {
   if (value == null) return '—';

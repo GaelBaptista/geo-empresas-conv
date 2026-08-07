@@ -1,6 +1,6 @@
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { getCompanyDisplayName } from '@/lib/company';
-import type { CompanyMinivagasExtras } from '@/services/minivagasApi';
+import type { CompanyDrvagasExtras } from '@/services/drvagasApi';
 import type { Company } from '@/types';
 
 function pct(value: number | null): string {
@@ -33,10 +33,10 @@ function field(label: string, value: string): Content {
 
 function buildDocDefinition(
   company: Company,
-  minivagasExtras?: CompanyMinivagasExtras | null
+  drvagasExtras?: CompanyDrvagasExtras | null
 ): TDocumentDefinitions {
   const name = getCompanyDisplayName(company);
-  const reputation = minivagasExtras?.reputation;
+  const reputation = drvagasExtras?.reputation;
   const showMetrics = Boolean(reputation && reputation.score != null);
 
   const content: Content[] = [
@@ -186,11 +186,11 @@ function buildDocDefinition(
     });
   }
 
-  if (minivagasExtras?.observacoes) {
+  if (drvagasExtras?.observacoes) {
     content.push({
       stack: [
-        { text: 'OBSERVAÇÕES MINIVAGAS', style: 'section' },
-        { text: minivagasExtras.observacoes, style: 'value' },
+        { text: 'OBSERVAÇÕES DRVAGAS', style: 'section' },
+        { text: drvagasExtras.observacoes, style: 'value' },
       ],
       style: 'card',
       margin: [0, 0, 0, 12] as [number, number, number, number],
@@ -244,7 +244,7 @@ function buildDocDefinition(
  */
 export async function exportCompanyDetailPdf(
   company: Company,
-  minivagasExtras?: CompanyMinivagasExtras | null
+  drvagasExtras?: CompanyDrvagasExtras | null
 ): Promise<void> {
   const [{ default: pdfMake }, pdfFonts] = await Promise.all([
     import('pdfmake/build/pdfmake'),
@@ -253,7 +253,7 @@ export async function exportCompanyDetailPdf(
 
   pdfMake.addVirtualFileSystem(pdfFonts.default ?? pdfFonts);
 
-  const doc = buildDocDefinition(company, minivagasExtras);
+  const doc = buildDocDefinition(company, drvagasExtras);
   const filename = `ficha-${slugifyFilename(getCompanyDisplayName(company))}.pdf`;
   pdfMake.createPdf(doc).download(filename);
 }

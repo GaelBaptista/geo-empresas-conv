@@ -19,13 +19,13 @@ import { CompanyVisitHistory } from '@/components/companies/CompanyVisitHistory'
 import { getCompanyDisplayName } from '@/lib/company';
 import { exportCompanyDetailPdf } from '@/lib/company-pdf';
 import { googleMapsCompanyUrl } from '@/lib/schedule-match';
-import type { CompanyMinivagasExtras } from '@/services/minivagasApi';
+import type { CompanyDrvagasExtras } from '@/services/drvagasApi';
 import type { Company, ScheduleItem } from '@/types';
 
 interface CompanyDetailSheetProps {
   company: Company | null;
   schedules: ScheduleItem[];
-  minivagasExtras?: CompanyMinivagasExtras | null;
+  drvagasExtras?: CompanyDrvagasExtras | null;
   onClose: () => void;
   onFocusOnMap: (company: Company) => void;
 }
@@ -33,7 +33,7 @@ interface CompanyDetailSheetProps {
 export function CompanyDetailSheet({
   company,
   schedules,
-  minivagasExtras = null,
+  drvagasExtras = null,
   onClose,
   onFocusOnMap,
 }: CompanyDetailSheetProps) {
@@ -60,7 +60,7 @@ export function CompanyDetailSheet({
     if (!company || exportStatus === 'loading') return;
     setExportStatus('loading');
     try {
-      await exportCompanyDetailPdf(company, minivagasExtras);
+      await exportCompanyDetailPdf(company, drvagasExtras);
       setExportStatus('success');
     } catch {
       setExportStatus('error');
@@ -247,35 +247,35 @@ export function CompanyDetailSheet({
                   </CardContent>
                 </Card>
 
-                {(minivagasExtras?.observacoes ||
-                  (minivagasExtras &&
-                    (minivagasExtras.reprovados > 0 ||
-                      minivagasExtras.contratados > 0 ||
-                      minivagasExtras.naoCompareceu > 0 ||
-                      minivagasExtras.enviados > 0 ||
-                      minivagasExtras.reprovadosMes > 0 ||
-                      minivagasExtras.contratadosMes > 0 ||
-                      minivagasExtras.naoCompareceuMes > 0 ||
-                      (minivagasExtras.recruiters?.length ?? 0) > 0))) && (
+                {(drvagasExtras?.observacoes ||
+                  (drvagasExtras &&
+                    (drvagasExtras.reprovados > 0 ||
+                      drvagasExtras.contratados > 0 ||
+                      drvagasExtras.naoCompareceu > 0 ||
+                      drvagasExtras.enviados > 0 ||
+                      drvagasExtras.reprovadosMes > 0 ||
+                      drvagasExtras.contratadosMes > 0 ||
+                      drvagasExtras.naoCompareceuMes > 0 ||
+                      (drvagasExtras.recruiters?.length ?? 0) > 0))) && (
                   <div className="space-y-3">
-                    {(minivagasExtras.recruiters?.length ?? 0) > 0 && (
+                    {(drvagasExtras.recruiters?.length ?? 0) > 0 && (
                       <Card className="border-teal-300/80 bg-teal-50/90 shadow-none dark:border-teal-700/70 dark:bg-teal-950/40">
                         <CardContent className="py-3.5 px-4">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-800/80 dark:text-teal-200/80">
                             Recrutador
                           </p>
                           <p className="text-base font-bold text-teal-950 dark:text-teal-50 mt-1">
-                            {minivagasExtras.recruiters!.join(' · ')}
+                            {drvagasExtras.recruiters!.join(' · ')}
                           </p>
                         </CardContent>
                       </Card>
                     )}
 
-                    {minivagasExtras.reputation &&
-                      minivagasExtras.reputation.score != null && (
+                    {drvagasExtras.reputation &&
+                      drvagasExtras.reputation.score != null && (
                         <CompanyReputationCard
-                          reputation={minivagasExtras.reputation}
-                          recruiters={minivagasExtras.recruiters}
+                          reputation={drvagasExtras.reputation}
+                          recruiters={drvagasExtras.recruiters}
                         />
                       )}
 
@@ -283,46 +283,46 @@ export function CompanyDetailSheet({
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm flex items-center gap-2 text-foreground">
                           <StickyNote className="size-3.5 text-primary" />
-                          Observações Minivagas
+                          Observações DrVagas
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
-                        {minivagasExtras.observacoes && (
+                        {drvagasExtras.observacoes && (
                           <p className="text-sm leading-relaxed break-words whitespace-pre-wrap text-muted-foreground">
-                            {minivagasExtras.observacoes}
+                            {drvagasExtras.observacoes}
                           </p>
                         )}
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="outline" className="bg-background">
-                            {minivagasExtras.enviados} candidato(s)
+                            {drvagasExtras.enviados} candidato(s)
                           </Badge>
                           <Badge
                             variant="outline"
                             className="bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-100 dark:border-sky-800"
                           >
-                            {minivagasExtras.contratados} contratados
+                            {drvagasExtras.contratados} contratados
                           </Badge>
                           <Badge
                             variant="outline"
                             className="bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/40 dark:text-rose-100 dark:border-rose-800"
                           >
                             <ThumbsDown className="size-3" />
-                            {minivagasExtras.reprovados} reprovados
+                            {drvagasExtras.reprovados} reprovados
                           </Badge>
-                          {minivagasExtras.naoCompareceu > 0 && (
+                          {drvagasExtras.naoCompareceu > 0 && (
                             <Badge
                               variant="outline"
                             className="bg-orange-50 text-orange-900 border-orange-200 dark:bg-orange-950/40 dark:text-orange-100 dark:border-orange-800"
                             >
-                              {minivagasExtras.naoCompareceu} faltas
+                              {drvagasExtras.naoCompareceu} faltas
                             </Badge>
                           )}
-                          {minivagasExtras.emFunil > 0 && (
+                          {drvagasExtras.emFunil > 0 && (
                             <Badge
                               variant="outline"
                               className="bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-100 dark:border-emerald-800"
                             >
-                              {minivagasExtras.emFunil} em entrevista
+                              {drvagasExtras.emFunil} em entrevista
                             </Badge>
                           )}
                         </div>

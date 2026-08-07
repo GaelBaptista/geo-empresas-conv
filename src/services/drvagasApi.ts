@@ -1,4 +1,4 @@
-import { getEstagius, isMinivagasConfigured } from '@/lib/minivagas-api';
+import { getEstagius, isDrvagasConfigured } from '@/lib/drvagas-api';
 import type { Company } from '@/types';
 import {
   fetchEntrevistaFreeze,
@@ -19,7 +19,7 @@ export const ENTREVISTA_STATUSES = [
   'entrevista',
 ] as const;
 
-export type MinivagasUser = {
+export type DrvagasUser = {
   id: number;
   name: string;
   email?: string | null;
@@ -30,7 +30,7 @@ export type MinivagasUser = {
 };
 
 /** Processo seletivo (vaga) — fonte do recrutador. */
-export type MinivagasProcessoSeletivo = {
+export type DrvagasProcessoSeletivo = {
   id: number;
   recrutador?: string | null;
   rh_recruiter?: string | null;
@@ -41,7 +41,7 @@ export type MinivagasProcessoSeletivo = {
   created_at?: string | null;
 };
 
-export type MinivagasCandidato = {
+export type DrvagasCandidato = {
   id: number;
   job_posting_id?: number;
   full_name?: string;
@@ -89,7 +89,7 @@ export type CompanyReputation = {
   label: ReputationLabel;
 };
 
-export type CompanyMinivagasExtras = {
+export type CompanyDrvagasExtras = {
   observacoes: string | null;
   reprovados: number;
   contratados: number;
@@ -100,12 +100,12 @@ export type CompanyMinivagasExtras = {
   enviados: number;
   emFunil: number;
   reputation: CompanyReputation | null;
-  minivagasName?: string;
+  drvagasName?: string;
   /** Recrutadores dos processos seletivos deste CNPJ. */
   recruiters?: string[];
 };
 
-/** Unidade (CNPJ) dentro de um grupo Minivagas. */
+/** Unidade (CNPJ) dentro de um grupo DrVagas. */
 export type GroupMemberRef = {
   cnpjDigits: string;
   companyId: string | null;
@@ -129,7 +129,7 @@ export type GroupMemberRef = {
 export type HiringRankRow = {
   /** `mv-{userId}` | `estagius-{id}` | `solo-{cnpj}` */
   groupKey: string;
-  /** ID do user Minivagas (role company), quando houver. */
+  /** ID do user DrVagas (role company), quando houver. */
   groupId: number | null;
   memberCount: number;
   members: GroupMemberRef[];
@@ -157,15 +157,15 @@ export type ReputationRankRow = {
   recruiters: string[];
 };
 
-type MinivagasGroupMeta = {
+type DrvagasGroupMeta = {
   userId: number;
   name: string;
   cnpjs: string[];
 };
 
-export type MinivagasGroupIndex = {
+export type DrvagasGroupIndex = {
   cnpjToGroup: Map<string, string>;
-  groups: Map<string, MinivagasGroupMeta>;
+  groups: Map<string, DrvagasGroupMeta>;
 };
 
 export type HiringPeriod = 'all' | 'month';
@@ -294,7 +294,7 @@ function unwrapPaginated<T>(payload: unknown): { items: T[]; meta: PageMeta } {
     asNumber(metaObj.lastPage) ??
     asNumber(metaObj.total_pages) ??
     1;
-  // Algumas rotas Minivagas devolvem tudo numa página com `count`
+  // Algumas rotas DrVagas devolvem tudo numa página com `count`
   const total = asNumber(metaObj.total) ?? asNumber(obj.count) ?? items.length;
 
   return {
@@ -334,7 +334,7 @@ export function normalizeCnpj(value: string | null | undefined): string {
   return digits;
 }
 
-function allUserCnpjs(user: MinivagasUser): string[] {
+function allUserCnpjs(user: DrvagasUser): string[] {
   const set = new Set<string>();
   const main = normalizeCnpj(user.cnpj);
   if (main.length >= 11) set.add(main);
@@ -345,7 +345,7 @@ function allUserCnpjs(user: MinivagasUser): string[] {
   return Array.from(set);
 }
 
-function candidatoCnpj(item: MinivagasCandidato): string {
+function candidatoCnpj(item: DrvagasCandidato): string {
   return normalizeCnpj(item.job_posting?.cnpj) || normalizeCnpj(item.cnpj) || '';
 }
 
@@ -358,9 +358,9 @@ function normalizeStatus(value: string | null | undefined): string {
 }
 
 export function filterCandidatosByStatus(
-  list: MinivagasCandidato[],
+  list: DrvagasCandidato[],
   status: string
-): MinivagasCandidato[] {
+): DrvagasCandidato[] {
   const expected = normalizeStatus(status);
   return list.filter((item) => {
     const s = normalizeStatus(item.status);
@@ -369,43 +369,43 @@ export function filterCandidatosByStatus(
   });
 }
 
-function isInCurrentMonth(item: MinivagasCandidato, now = new Date()): boolean {
+function isInCurrentMonth(item: DrvagasCandidato, now = new Date()): boolean {
   return isDateInYearMonth(item.updated_at || item.created_at || '', {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
   });
 }
 
-function isInYearMonth(item: MinivagasCandidato, ym: YearMonth): boolean {
+function isInYearMonth(item: DrvagasCandidato, ym: YearMonth): boolean {
   return isDateInYearMonth(item.updated_at || item.created_at || '', ym);
 }
 
 export function filterCandidatosByPeriod(
-  list: MinivagasCandidato[],
+  list: DrvagasCandidato[],
   period: HiringPeriod
-): MinivagasCandidato[] {
+): DrvagasCandidato[] {
   if (period === 'all') return list;
   return list.filter((item) => isInCurrentMonth(item));
 }
 
 export function filterCandidatosByYearMonth(
-  list: MinivagasCandidato[],
+  list: DrvagasCandidato[],
   ym: YearMonth
-): MinivagasCandidato[] {
+): DrvagasCandidato[] {
   return list.filter((item) => isInYearMonth(item, ym));
 }
 
-export async function fetchMinivagasUsers(): Promise<MinivagasUser[]> {
-  const { items } = await fetchAllPages<MinivagasUser>('/users');
+export async function fetchDrvagasUsers(): Promise<DrvagasUser[]> {
+  const { items } = await fetchAllPages<DrvagasUser>('/users');
   return items;
 }
 
-export async function fetchProcessosSeletivos(): Promise<MinivagasProcessoSeletivo[]> {
+export async function fetchProcessosSeletivos(): Promise<DrvagasProcessoSeletivo[]> {
   try {
-    const { items } = await fetchAllPages<MinivagasProcessoSeletivo>('/processos_seletivos');
+    const { items } = await fetchAllPages<DrvagasProcessoSeletivo>('/processos_seletivos');
     return items;
   } catch (err) {
-    console.warn('[minivagas] falha ao carregar processos_seletivos (recrutadores)', err);
+    console.warn('[drvagas] falha ao carregar processos_seletivos (recrutadores)', err);
     return [];
   }
 }
@@ -423,7 +423,7 @@ function normalizeRecruiterName(value: string | null | undefined): string {
  * Mais recentes primeiro; nomes ordenados alfabeticamente na lista final.
  */
 export function buildRecruitersByCnpj(
-  processos: MinivagasProcessoSeletivo[]
+  processos: DrvagasProcessoSeletivo[]
 ): Map<string, string[]> {
   const ranked = [...processos].sort((a, b) => {
     const ta = Date.parse(b.updated_at || b.created_at || '') || 0;
@@ -477,8 +477,8 @@ export function formatRecruitersLabel(names: string[]): string {
 
 export async function fetchCandidatosByStatus(
   status: string
-): Promise<{ items: MinivagasCandidato[]; reportedTotal: number | null }> {
-  const { items, reportedTotal } = await fetchAllPages<MinivagasCandidato>(
+): Promise<{ items: DrvagasCandidato[]; reportedTotal: number | null }> {
+  const { items, reportedTotal } = await fetchAllPages<DrvagasCandidato>(
     `/candidatos/status/${status}`
   );
   return {
@@ -488,12 +488,12 @@ export async function fetchCandidatosByStatus(
 }
 
 /** Tenta status de entrevista; se a rota não existir, ignora. */
-async function fetchEntrevistaStatuses(): Promise<MinivagasCandidato[]> {
+async function fetchEntrevistaStatuses(): Promise<DrvagasCandidato[]> {
   const results = await Promise.allSettled(
     ENTREVISTA_STATUSES.map((status) => fetchCandidatosByStatus(status))
   );
 
-  const byKey = new Map<string, MinivagasCandidato>();
+  const byKey = new Map<string, DrvagasCandidato>();
   for (const result of results) {
     if (result.status !== 'fulfilled') continue;
     for (const item of result.value.items) {
@@ -504,7 +504,7 @@ async function fetchEntrevistaStatuses(): Promise<MinivagasCandidato[]> {
   return Array.from(byKey.values());
 }
 
-export function buildObservacoesByCnpj(users: MinivagasUser[]): Map<string, string> {
+export function buildObservacoesByCnpj(users: DrvagasUser[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const user of users) {
     const obs = (user.observacoes || '').trim();
@@ -521,7 +521,7 @@ function emptyCounts(name = ''): Counts {
 }
 
 function accumulateCandidates(
-  list: MinivagasCandidato[],
+  list: DrvagasCandidato[],
   field: CountField,
   byCnpj: Map<string, Counts>
 ) {
@@ -537,10 +537,10 @@ function accumulateCandidates(
 }
 
 export function buildHiringStatsByCnpj(
-  reprovados: MinivagasCandidato[],
-  contratados: MinivagasCandidato[],
-  naoCompareceu: MinivagasCandidato[] = [],
-  pipeline: MinivagasCandidato[] = []
+  reprovados: DrvagasCandidato[],
+  contratados: DrvagasCandidato[],
+  naoCompareceu: DrvagasCandidato[] = [],
+  pipeline: DrvagasCandidato[] = []
 ): Map<string, Counts> {
   const byCnpj = new Map<string, Counts>();
   accumulateCandidates(reprovados, 'reprovados', byCnpj);
@@ -644,7 +644,7 @@ export function computeReputation(counts: Counts): CompanyReputation {
 }
 
 export function countByCnpj(
-  list: MinivagasCandidato[]
+  list: DrvagasCandidato[]
 ): Map<string, { count: number; name: string }> {
   const map = new Map<string, { count: number; name: string }>();
   for (const item of list) {
@@ -667,7 +667,7 @@ export function extrasForCompany(
   reputationByCnpj?: Map<string, Counts> | null,
   reputationByCnpjMonth?: Map<string, Counts> | null,
   recruitersByCnpj?: Map<string, string[]> | null
-): CompanyMinivagasExtras | null {
+): CompanyDrvagasExtras | null {
   const digits = normalizeCnpj(company.cnpj);
   if (!digits) return null;
 
@@ -697,16 +697,16 @@ export function extrasForCompany(
     enviados: reputation?.enviados ?? 0,
     emFunil: reputation?.emFunil ?? 0,
     reputation,
-    minivagasName:
+    drvagasName:
       reputationCounts?.name || hiring?.name || hiringMonth?.name || reputationCountsMonth?.name,
     recruiters,
   };
 }
 
-/** Índice CNPJ → grupo Minivagas (`users[].cnpjs`). Grupos maiores ganham em conflito. */
-export function buildMinivagasGroupIndex(users: MinivagasUser[]): MinivagasGroupIndex {
+/** Índice CNPJ → grupo DrVagas (`users[].cnpjs`). Grupos maiores ganham em conflito. */
+export function buildDrvagasGroupIndex(users: DrvagasUser[]): DrvagasGroupIndex {
   const cnpjToGroup = new Map<string, string>();
-  const groups = new Map<string, MinivagasGroupMeta>();
+  const groups = new Map<string, DrvagasGroupMeta>();
 
   const ranked = users
     .map((user) => ({ user, cnpjs: allUserCnpjs(user) }))
@@ -740,7 +740,7 @@ function companyByCnpjMap(companies: Company[]): Map<string, Company> {
 
 function resolveGroupKey(
   cnpjDigits: string,
-  index: MinivagasGroupIndex,
+  index: DrvagasGroupIndex,
   company?: Company
 ): string {
   const fromMv = index.cnpjToGroup.get(cnpjDigits);
@@ -751,7 +751,7 @@ function resolveGroupKey(
 
 function resolveGroupName(
   groupKey: string,
-  index: MinivagasGroupIndex,
+  index: DrvagasGroupIndex,
   company: Company | undefined,
   fallbackName: string
 ): string {
@@ -766,7 +766,7 @@ function resolveGroupName(
 
 function membersForGroupKey(
   groupKey: string,
-  index: MinivagasGroupIndex,
+  index: DrvagasGroupIndex,
   companyByCnpj: Map<string, Company>,
   extraCnpjs: string[] = [],
   statsByCnpj?: Map<string, Counts>,
@@ -832,20 +832,20 @@ function pickRepresentative(members: GroupMemberRef[]): GroupMemberRef | null {
   return members[0] || null;
 }
 
-function parseMinivagasGroupId(groupKey: string): number | null {
+function parseDrvagasGroupId(groupKey: string): number | null {
   if (!groupKey.startsWith('mv-')) return null;
   const id = Number(groupKey.slice(3));
   return Number.isFinite(id) ? id : null;
 }
 
 /**
- * Ranking de volume (contratados / reprovados / faltas) agregado por grupo Minivagas.
+ * Ranking de volume (contratados / reprovados / faltas) agregado por grupo DrVagas.
  * Sem limite por padrão — lista todos os grupos com movimento.
  */
 export function buildSingleSideRanking(
   companies: Company[],
-  list: MinivagasCandidato[],
-  index: MinivagasGroupIndex,
+  list: DrvagasCandidato[],
+  index: DrvagasGroupIndex,
   limit: number | null = null,
   statsByCnpj?: Map<string, Counts>,
   recruitersByCnpj?: Map<string, string[]>
@@ -885,7 +885,7 @@ export function buildSingleSideRanking(
     const recruiters = unionRecruiterNames(...members.map((m) => m.recruiters));
     rows.push({
       groupKey,
-      groupId: parseMinivagasGroupId(groupKey),
+      groupId: parseDrvagasGroupId(groupKey),
       memberCount: Math.max(1, members.length),
       members,
       cnpjDigits: rep?.cnpjDigits || [...data.cnpjs][0] || groupKey,
@@ -904,20 +904,20 @@ export function buildSingleSideRanking(
 }
 
 /**
- * Contagens de reputação por GRUPO Minivagas (soma dos CNPJs do user).
+ * Contagens de reputação por GRUPO DrVagas (soma dos CNPJs do user).
  */
 export function buildReputationStatsByGroup(
   companies: Company[],
-  index: MinivagasGroupIndex,
-  reprovadosEmpresa: MinivagasCandidato[],
-  contratados: MinivagasCandidato[],
-  naoCompareceu: MinivagasCandidato[],
-  emEntrevista: MinivagasCandidato[]
+  index: DrvagasGroupIndex,
+  reprovadosEmpresa: DrvagasCandidato[],
+  contratados: DrvagasCandidato[],
+  naoCompareceu: DrvagasCandidato[],
+  emEntrevista: DrvagasCandidato[]
 ): Map<string, Counts> {
   const companyByCnpj = companyByCnpjMap(companies);
   const byGroup = new Map<string, Counts>();
 
-  const add = (list: MinivagasCandidato[], field: CountField) => {
+  const add = (list: DrvagasCandidato[], field: CountField) => {
     for (const item of list) {
       const cnpj = candidatoCnpj(item);
       if (cnpj.length < 11) continue;
@@ -943,7 +943,7 @@ export function buildReputationStatsByGroup(
 function freezeEntriesToCandidatos(
   entries: FreezeEntry[],
   outcome: FreezeEntry['outcome'] | 'em_funil'
-): MinivagasCandidato[] {
+): DrvagasCandidato[] {
   return entries
     .filter((entry) => {
       if (outcome === 'em_funil') return !entry.outcome;
@@ -966,7 +966,7 @@ function freezeEntriesToCandidatos(
 }
 
 /** Chave estável candidato+vaga — evita contar duas vezes no merge freeze × API. */
-function candidatoJobKey(item: MinivagasCandidato): string {
+function candidatoJobKey(item: DrvagasCandidato): string {
   const jobId = item.job_posting_id ?? item.job_posting?.id ?? 0;
   return `${item.id}:${jobId}`;
 }
@@ -976,10 +976,10 @@ function candidatoJobKey(item: MinivagasCandidato): string {
  * (ex.: contratado antigo que sumiu da paginação do sync).
  */
 function mergeCandidatosByJob(
-  primary: MinivagasCandidato[],
-  secondary: MinivagasCandidato[]
-): MinivagasCandidato[] {
-  const map = new Map<string, MinivagasCandidato>();
+  primary: DrvagasCandidato[],
+  secondary: DrvagasCandidato[]
+): DrvagasCandidato[] {
+  const map = new Map<string, DrvagasCandidato>();
   for (const item of secondary) {
     map.set(candidatoJobKey(item), item);
   }
@@ -991,9 +991,9 @@ function mergeCandidatosByJob(
 
 /** Tira do funil quem já tem desfecho na API (não contar como enviado duas vezes). */
 function excludeDecidedFromFunnel(
-  emFunil: MinivagasCandidato[],
-  decided: MinivagasCandidato[]
-): MinivagasCandidato[] {
+  emFunil: DrvagasCandidato[],
+  decided: DrvagasCandidato[]
+): DrvagasCandidato[] {
   if (emFunil.length === 0 || decided.length === 0) return emFunil;
   const decidedKeys = new Set(decided.map(candidatoJobKey));
   return emFunil.filter((item) => !decidedKeys.has(candidatoJobKey(item)));
@@ -1015,7 +1015,7 @@ function isFreezeEntryInYearMonth(entry: FreezeEntry, ym: YearMonth): boolean {
 /** Espelha a contagem do grupo em cada CNPJ membro (para ficha da empresa). */
 export function expandGroupStatsToCnpjs(
   companies: Company[],
-  index: MinivagasGroupIndex,
+  index: DrvagasGroupIndex,
   hiringByGroup: Map<string, Counts>
 ): Map<string, Counts> {
   const byCnpj = new Map<string, Counts>();
@@ -1044,10 +1044,10 @@ export function expandGroupStatsToCnpjs(
   return byCnpj;
 }
 
-/** Ranking de reputação por GRUPO Minivagas (taxa após entrevista). */
+/** Ranking de reputação por GRUPO DrVagas (taxa após entrevista). */
 export function buildReputationRanking(
   companies: Company[],
-  index: MinivagasGroupIndex,
+  index: DrvagasGroupIndex,
   hiringByGroup: Map<string, Counts>,
   options?: {
     /** Mínimo de resultados (contratou/reprovou/faltou). Padrão 0 = qualquer movimentação. */
@@ -1096,7 +1096,7 @@ export function buildReputationRanking(
 
     rows.push({
       groupKey,
-      groupId: parseMinivagasGroupId(groupKey),
+      groupId: parseDrvagasGroupId(groupKey),
       memberCount: Math.max(1, members.length),
       members,
       cnpjDigits: rep?.cnpjDigits || groupKey,
@@ -1153,17 +1153,17 @@ export type StatusTotals = {
 };
 
 /** Dados brutos para remontar rankings de qualquer mês do histórico. */
-export type MinivagasRankingSource = {
+export type DrvagasRankingSource = {
   useFreeze: boolean;
   freezeEntries: FreezeEntry[];
-  volumeReprovados: MinivagasCandidato[];
-  volumeContratados: MinivagasCandidato[];
-  volumeNaoCompareceu: MinivagasCandidato[];
-  volumeEntrevista: MinivagasCandidato[];
-  reprovadosEmpresa: MinivagasCandidato[];
-  contratados: MinivagasCandidato[];
-  naoCompareceu: MinivagasCandidato[];
-  emEntrevista: MinivagasCandidato[];
+  volumeReprovados: DrvagasCandidato[];
+  volumeContratados: DrvagasCandidato[];
+  volumeNaoCompareceu: DrvagasCandidato[];
+  volumeEntrevista: DrvagasCandidato[];
+  reprovadosEmpresa: DrvagasCandidato[];
+  contratados: DrvagasCandidato[];
+  naoCompareceu: DrvagasCandidato[];
+  emEntrevista: DrvagasCandidato[];
 };
 
 export type PeriodRankings = {
@@ -1180,7 +1180,7 @@ export type PeriodRankings = {
   };
 };
 
-export type MinivagasBundle = {
+export type DrvagasBundle = {
   observacoesByCnpj: Map<string, string>;
   hiringByCnpj: Map<string, Counts>;
   hiringByCnpjMonth: Map<string, Counts>;
@@ -1200,12 +1200,12 @@ export type MinivagasBundle = {
   matchedObservacoes: number;
   matchedHiring: number;
   totals: StatusTotals;
-  groupIndex: MinivagasGroupIndex;
-  source: MinivagasRankingSource;
+  groupIndex: DrvagasGroupIndex;
+  source: DrvagasRankingSource;
 };
 
 export function rankingsForPeriod(
-  bundle: MinivagasBundle,
+  bundle: DrvagasBundle,
   period: HiringPeriod
 ): {
   topRejecters: HiringRankRow[];
@@ -1230,17 +1230,17 @@ export function rankingsForPeriod(
 }
 
 function buildPeriodSlice(
-  source: MinivagasRankingSource,
+  source: DrvagasRankingSource,
   ym: YearMonth | null
 ): {
-  volumeReprovados: MinivagasCandidato[];
-  volumeContratados: MinivagasCandidato[];
-  volumeNaoCompareceu: MinivagasCandidato[];
-  volumeEntrevista: MinivagasCandidato[];
-  reprovados: MinivagasCandidato[];
-  contratados: MinivagasCandidato[];
-  naoCompareceu: MinivagasCandidato[];
-  emFunil: MinivagasCandidato[];
+  volumeReprovados: DrvagasCandidato[];
+  volumeContratados: DrvagasCandidato[];
+  volumeNaoCompareceu: DrvagasCandidato[];
+  volumeEntrevista: DrvagasCandidato[];
+  reprovados: DrvagasCandidato[];
+  contratados: DrvagasCandidato[];
+  naoCompareceu: DrvagasCandidato[];
+  emFunil: DrvagasCandidato[];
 } {
   if (!ym) {
     return {
@@ -1305,7 +1305,7 @@ function buildPeriodSlice(
 
 /** Rankings + totais para Geral ou um mês específico do histórico. */
 export function rankingsForSelection(
-  bundle: MinivagasBundle,
+  bundle: DrvagasBundle,
   companies: Company[],
   selection: HiringPeriodSelection
 ): PeriodRankings {
@@ -1417,8 +1417,8 @@ export function reputationTone(label: ReputationLabel): string {
   }
 }
 
-export async function loadMinivagasBundle(companies: Company[]): Promise<MinivagasBundle | null> {
-  if (!isMinivagasConfigured()) return null;
+export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBundle | null> {
+  if (!isDrvagasConfigured()) return null;
 
   // Backup: se alguém abrir o app, tenta sync (debounce 10 min no servidor)
   triggerEntrevistaFreezeSync();
@@ -1432,7 +1432,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
     freezePayload,
     processosSeletivos,
   ] = await Promise.all([
-    fetchMinivagasUsers(),
+    fetchDrvagasUsers(),
     fetchCandidatosByStatus('reprovado_empresa'),
     fetchCandidatosByStatus('contratado'),
     fetchCandidatosByStatus('nao_compareceu_empresa'),
@@ -1446,7 +1446,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
   const freezeEntries = freezePayload?.entries || [];
   const useFreeze = freezeEntries.length > 0;
 
-  // Volume: sempre tags ao vivo (bate com a listagem do Minivagas)
+  // Volume: sempre tags ao vivo (bate com a listagem do DrVagas)
   const volumeReprovados = reprovadosEmpresaRes.items;
   const volumeContratados = contratadosRes.items;
   const volumeNaoCompareceu = naoCompareceuRes.items;
@@ -1516,7 +1516,7 @@ export async function loadMinivagasBundle(companies: Company[]): Promise<Minivag
   const volumeEntrevistaMes = filterCandidatosByPeriod(volumeEntrevista, 'month');
 
   const observacoesByCnpj = buildObservacoesByCnpj(users);
-  const groupIndex = buildMinivagasGroupIndex(users);
+  const groupIndex = buildDrvagasGroupIndex(users);
 
   const hiringByCnpj = buildHiringStatsByCnpj(
     volumeReprovados,

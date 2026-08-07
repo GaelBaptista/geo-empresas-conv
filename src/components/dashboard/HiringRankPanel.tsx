@@ -52,10 +52,10 @@ import {
   type GroupMemberRef,
   type HiringPeriodSelection,
   type HiringRankRow,
-  type MinivagasBundle,
+  type DrvagasBundle,
   type ReputationLabel,
   type ReputationRankRow,
-} from '@/services/minivagasApi';
+} from '@/services/drvagasApi';
 import type { Company } from '@/types';
 
 type RankView = 'reputation' | 'hired' | 'rejected' | 'noshow';
@@ -142,7 +142,7 @@ function openMemberFicha(
 }
 
 interface HiringRankPanelProps {
-  bundle: MinivagasBundle;
+  bundle: DrvagasBundle;
   companies: Company[];
   onSelectCompany: (company: Company) => void;
   compact?: boolean;

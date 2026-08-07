@@ -17,10 +17,11 @@ export const OUTCOME_STATUSES = [
 ];
 
 /**
- * Token Minivagas — SOMENTE Functions / Node (nunca importar no front Vite).
+ * Token DrVagas — SOMENTE Functions / Node (nunca importar no front Vite).
  * Ordem: env do Netlify → fallback de deploy (servidor).
  *
- * Preferir no painel: MINIVAGAS_TOKEN (escopo Functions).
+ * Preferir no painel: DRVAGAS_TOKEN (escopo Functions).
+ * Aliases aceitos: MINIVAGAS_TOKEN / VITE_MINIVAGAS_TOKEN (legado).
  * O browser NÃO recebe este valor; só o proxy usa.
  */
 const DEPLOY_TOKEN_FALLBACK =
@@ -28,8 +29,10 @@ const DEPLOY_TOKEN_FALLBACK =
 
 export function readToken() {
   const raw =
+    process.env.DRVAGAS_TOKEN ||
     process.env.MINIVAGAS_TOKEN ||
     process.env.VITE_PUBLIC_TOKEN ||
+    process.env.VITE_DRVAGAS_TOKEN ||
     process.env.VITE_MINIVAGAS_TOKEN ||
     DEPLOY_TOKEN_FALLBACK ||
     '';
@@ -100,7 +103,7 @@ async function fetchPage(token, status, page) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
-    const err = new Error(`Minivagas ${status} HTTP ${res.status}`);
+    const err = new Error(`DrVagas ${status} HTTP ${res.status}`);
     err.status = res.status;
     throw err;
   }
@@ -248,7 +251,9 @@ function upsertOutcome(entries, item, outcome, nowIso) {
 export async function syncEntrevistaFreeze(options = {}) {
   const token = readToken();
   if (!token) {
-    throw new Error('Token Minivagas não configurado (MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN).');
+    throw new Error(
+      'Token DrVagas não configurado (DRVAGAS_TOKEN, MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN).'
+    );
   }
 
   const minIntervalMs = options.minIntervalMs ?? 0;

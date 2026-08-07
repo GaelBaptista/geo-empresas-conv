@@ -30,10 +30,10 @@ import { fetchGroupOptions, type GroupOption } from '@/services/groupsApi';
 import { fetchSchedules } from '@/services/schedulesApi';
 import {
   extrasForCompany,
-  loadMinivagasBundle,
-  type CompanyMinivagasExtras,
-  type MinivagasBundle,
-} from '@/services/minivagasApi';
+  loadDrvagasBundle,
+  type CompanyDrvagasExtras,
+  type DrvagasBundle,
+} from '@/services/drvagasApi';
 import type { Company, ScheduleItem, ViewMode } from '@/types';
 
 const USE_API = import.meta.env.VITE_USE_API !== 'false';
@@ -59,16 +59,16 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
   const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
   const [companiesError, setCompaniesError] = useState<string | null>(null);
   const [schedulesError, setSchedulesError] = useState<string | null>(null);
-  const [minivagas, setMinivagas] = useState<MinivagasBundle | null>(null);
-  const [minivagasError, setMinivagasError] = useState<string | null>(null);
+  const [drvagas, setDrvagas] = useState<DrvagasBundle | null>(null);
+  const [drvagasError, setDrvagasError] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
   const focusTokenRef = useRef(0);
   const streetRefineAbortRef = useRef<AbortController | null>(null);
   const companiesRef = useRef(companies);
   companiesRef.current = companies;
 
-  /** Refresh silencioso do Minivagas + freeze — a cada 5 min com a aba visível. */
-  const MINIVAGAS_REFRESH_MS = 5 * 60 * 1000;
+  /** Refresh silencioso do DrVagas + freeze — a cada 5 min com a aba visível. */
+  const DRVAGAS_REFRESH_MS = 5 * 60 * 1000;
 
   const deferredCompanies = useDeferredValue(companies);
   const neighborhoods = useMemo(
@@ -114,8 +114,8 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
       setCompanies(DEFAULT_COMPANIES);
       setGroups([]);
       setSchedules([]);
-      setMinivagas(null);
-      setMinivagasError(null);
+      setDrvagas(null);
+      setDrvagasError(null);
       setIsLoadingCompanies(false);
       setCompaniesError(null);
       setSchedulesError(null);
@@ -126,7 +126,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     setIsLoadingCompanies(true);
     setCompaniesError(null);
     setSchedulesError(null);
-    setMinivagasError(null);
+    setDrvagasError(null);
 
     try {
       const [companiesResult, groupsResult, contractsResult, schedulesResult] =
@@ -158,7 +158,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
         setCompanies([]);
         setGroups([]);
         setSchedules([]);
-        setMinivagas(null);
+        setDrvagas(null);
         setIsLoadingCompanies(false);
         return;
       }
@@ -248,25 +248,25 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
         window.setTimeout(startStreetRefine, 1200);
       }
 
-      void loadMinivagasBundle(enriched)
+      void loadDrvagasBundle(enriched)
         .then((bundle) => {
           if (loadId !== loadRequestIdRef.current) return;
           if (!bundle) {
-            setMinivagas(null);
-            setMinivagasError(
-              'Ranking Minivagas indisponível no momento. Tente novamente em instantes.'
+            setDrvagas(null);
+            setDrvagasError(
+              'Ranking DrVagas indisponível no momento. Tente novamente em instantes.'
             );
             return;
           }
-          setMinivagas(bundle);
-          setMinivagasError(null);
+          setDrvagas(bundle);
+          setDrvagasError(null);
         })
         .catch((err) => {
           if (loadId !== loadRequestIdRef.current) return;
-          console.warn('Falha ao carregar Minivagas', err);
-          setMinivagas(null);
-          setMinivagasError(
-            'Não carregou observações/ranking do Minivagas. Tente atualizar a página.'
+          console.warn('Falha ao carregar DrVagas', err);
+          setDrvagas(null);
+          setDrvagasError(
+            'Não carregou observações/ranking do DrVagas. Tente atualizar a página.'
           );
         });
     } catch (e: unknown) {
@@ -288,7 +288,7 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
       setCompanies([]);
       setGroups([]);
       setSchedules([]);
-      setMinivagas(null);
+      setDrvagas(null);
       setIsLoadingCompanies(false);
     }
   }, [enabled, onUnauthorized]);
@@ -299,8 +299,8 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
       setCompanies([]);
       setGroups([]);
       setSchedules([]);
-      setMinivagas(null);
-      setMinivagasError(null);
+      setDrvagas(null);
+      setDrvagasError(null);
       setIsLoadingCompanies(false);
       setCompaniesError(null);
       setSchedulesError(null);
@@ -316,22 +316,22 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
   useEffect(() => {
     if (!enabled || !USE_API) return;
 
-    const refreshMinivagas = () => {
+    const refreshDrvagas = () => {
       if (typeof document !== 'undefined' && document.hidden) return;
       const list = companiesRef.current;
       if (!list.length) return;
-      void loadMinivagasBundle(list)
+      void loadDrvagasBundle(list)
         .then((bundle) => {
           if (!bundle) return;
-          setMinivagas(bundle);
-          setMinivagasError(null);
+          setDrvagas(bundle);
+          setDrvagasError(null);
         })
         .catch((err) => {
-          console.warn('Falha no refresh silencioso do Minivagas', err);
+          console.warn('Falha no refresh silencioso do DrVagas', err);
         });
     };
 
-    const id = window.setInterval(refreshMinivagas, MINIVAGAS_REFRESH_MS);
+    const id = window.setInterval(refreshDrvagas, DRVAGAS_REFRESH_MS);
     return () => window.clearInterval(id);
   }, [enabled]);
 
@@ -363,20 +363,20 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     [matchedSchedules]
   );
 
-  const getMinivagasExtras = useCallback(
-    (company: Company): CompanyMinivagasExtras | null => {
-      if (!minivagas) return null;
+  const getDrvagasExtras = useCallback(
+    (company: Company): CompanyDrvagasExtras | null => {
+      if (!drvagas) return null;
       return extrasForCompany(
         company,
-        minivagas.observacoesByCnpj,
-        minivagas.hiringByCnpj,
-        minivagas.hiringByCnpjMonth,
-        minivagas.reputationByCnpj,
-        minivagas.reputationByCnpjMonth,
-        minivagas.recruitersByCnpj
+        drvagas.observacoesByCnpj,
+        drvagas.hiringByCnpj,
+        drvagas.hiringByCnpjMonth,
+        drvagas.reputationByCnpj,
+        drvagas.reputationByCnpjMonth,
+        drvagas.recruitersByCnpj
       );
     },
-    [minivagas]
+    [drvagas]
   );
 
   const linkScheduleToCompany = useCallback((scheduleId: string, companyId: string) => {
@@ -397,9 +397,9 @@ export function useAppData(options?: { enabled?: boolean; onUnauthorized?: () =>
     companiesWithVisitSoonIds,
     upcomingVisitCount,
     getNextVisitForCompany,
-    getMinivagasExtras,
-    minivagas,
-    minivagasError,
+    getDrvagasExtras,
+    drvagas,
+    drvagasError,
     activeView,
     setActiveView,
     selectedNeighborhoodId,

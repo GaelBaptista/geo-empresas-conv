@@ -5,7 +5,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 
 const UPSTREAM = 'https://apiminivagas.estagius.com.br/api';
 
-function isAllowedMinivagasPath(apiPath: string): boolean {
+function isAllowedDrvagasPath(apiPath: string): boolean {
   if (!apiPath.startsWith('/')) return false;
   if (apiPath.includes('..') || apiPath.includes('//') || apiPath.includes('\\')) {
     return false;
@@ -16,15 +16,21 @@ function isAllowedMinivagasPath(apiPath: string): boolean {
   return false;
 }
 
-/** Proxy Minivagas no dev: token só no Node (lê .env), nunca no browser. */
-function minivagasDevProxy(): Plugin {
+/** Proxy DrVagas no dev: token só no Node (lê .env), nunca no browser. */
+function drvagasDevProxy(): Plugin {
   return {
-    name: 'minivagas-dev-proxy',
+    name: 'drvagas-dev-proxy',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         try {
           const url = req.url || '';
-          if (!url.startsWith('/api/minivagas')) return next();
+          // /api/minivagas = alias legado
+          if (
+            !url.startsWith('/api/drvagas') &&
+            !url.startsWith('/api/minivagas')
+          ) {
+            return next();
+          }
           if (req.method !== 'GET') {
             res.statusCode = 405;
             res.setHeader('Content-Type', 'application/json');
@@ -35,11 +41,15 @@ function minivagasDevProxy(): Plugin {
           // Preferência: recarrega env a cada request (token sem reiniciar dev server)
           const env = loadEnv(server.config.mode, server.config.envDir || process.cwd(), '');
           const token = String(
-            env.MINIVAGAS_TOKEN ||
+            env.DRVAGAS_TOKEN ||
+              env.MINIVAGAS_TOKEN ||
               env.VITE_PUBLIC_TOKEN ||
+              env.VITE_DRVAGAS_TOKEN ||
               env.VITE_MINIVAGAS_TOKEN ||
+              process.env.DRVAGAS_TOKEN ||
               process.env.MINIVAGAS_TOKEN ||
               process.env.VITE_PUBLIC_TOKEN ||
+              process.env.VITE_DRVAGAS_TOKEN ||
               process.env.VITE_MINIVAGAS_TOKEN ||
               ''
           )
@@ -52,7 +62,7 @@ function minivagasDevProxy(): Plugin {
             res.end(
               JSON.stringify({
                 error:
-                  'Token Minivagas ausente. Coloque VITE_PUBLIC_TOKEN ou MINIVAGAS_TOKEN no .env e reinicie o npm run dev.',
+                  'Token DrVagas ausente. Coloque DRVAGAS_TOKEN (ou MINIVAGAS_TOKEN / VITE_PUBLIC_TOKEN) no .env e reinicie o npm run dev.',
               })
             );
             return;
@@ -61,7 +71,7 @@ function minivagasDevProxy(): Plugin {
           const parsed = new URL(url, 'http://localhost');
           let apiPath = (parsed.searchParams.get('path') || '').trim();
           if (apiPath && !apiPath.startsWith('/')) apiPath = `/${apiPath}`;
-          if (!isAllowedMinivagasPath(apiPath)) {
+          if (!isAllowedDrvagasPath(apiPath)) {
             res.statusCode = 400;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: 'path não permitido' }));
@@ -106,7 +116,7 @@ export default defineConfig(({ mode }) => {
   loadEnv(mode, process.cwd(), '');
 
   return {
-    plugins: [react(), tailwindcss(), minivagasDevProxy()],
+    plugins: [react(), tailwindcss(), drvagasDevProxy()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

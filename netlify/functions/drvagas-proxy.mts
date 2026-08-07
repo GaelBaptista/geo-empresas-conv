@@ -1,7 +1,7 @@
 import { BASE, readToken } from './_shared/freeze.mjs';
 
 /**
- * Proxy GET Minivagas — token só em variáveis de ambiente do Netlify.
+ * Proxy GET DrVagas — token só em variáveis de ambiente do Netlify.
  * O front NÃO deve embutir o token no bundle.
  *
  * Query:
@@ -41,7 +41,7 @@ export default async (req: Request) => {
         {
           ok: false,
           error:
-            'Token Minivagas não configurado no servidor (MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN no painel Netlify).',
+            'Token DrVagas não configurado no servidor (DRVAGAS_TOKEN, MINIVAGAS_TOKEN ou VITE_PUBLIC_TOKEN no painel Netlify).',
         },
         503
       );

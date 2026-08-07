@@ -12,14 +12,22 @@
 # Cron também definido no export config da function (*/5 * * * * UTC).
 # Blob do site (entrevista-freeze) NÃO reseta em deploy.
 
-# Token Minivagas — SOMENTE no painel Netlify (nunca no Git):
-#   MINIVAGAS_TOKEN = token da API (escopo: Functions / Blobs)
+# Token DrVagas — SOMENTE no painel Netlify (nunca no Git):
+#   DRVAGAS_TOKEN = token da API (escopo: Functions / Blobs)
+#   (legado) MINIVAGAS_TOKEN também funciona
 # NÃO use VITE_PUBLIC_TOKEN no build do front (vai para o JS do browser).
 # Depois: Deploys → Clear cache and deploy site
 
-# Front chama /api/minivagas; Function aplica o Bearer no servidor.
+# Front chama /api/drvagas; Function aplica o Bearer no servidor.
+[[redirects]]
+  from = "/api/drvagas"
+  to = "/.netlify/functions/drvagas-proxy"
+  status = 200
+  force = true
+
+# Alias legado (não quebra deploys/bookmarks antigos)
 [[redirects]]
   from = "/api/minivagas"
-  to = "/.netlify/functions/minivagas-proxy"
+  to = "/.netlify/functions/drvagas-proxy"
   status = 200
   force = true

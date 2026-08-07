@@ -1,6 +1,6 @@
 /**
- * Cliente Minivagas — o browser NUNCA envia o token.
- * Dev:  Vite middleware /api/minivagas (token no Node via .env)
+ * Cliente DrVagas — o browser NUNCA envia o token.
+ * Dev:  Vite middleware /api/drvagas (token no Node via .env)
  * Prod: Function Netlify (token só no servidor)
  */
 
@@ -19,7 +19,7 @@ function getCacheKey(path: string, params?: Record<string, unknown>) {
 }
 
 /** Sempre tenta o proxy same-origin (token escondido no servidor). */
-export function isMinivagasConfigured(): boolean {
+export function isDrvagasConfigured(): boolean {
   return true;
 }
 
@@ -31,11 +31,11 @@ function normalizeApiPath(path: string): string {
 function proxyCandidates(): string[] {
   if (import.meta.env.PROD) {
     return [
-      '/.netlify/functions/minivagas-proxy',
-      '/api/minivagas',
+      '/.netlify/functions/drvagas-proxy',
+      '/api/drvagas',
     ];
   }
-  return ['/api/minivagas'];
+  return ['/api/drvagas'];
 }
 
 async function fetchViaOneProxy<T>(
@@ -60,7 +60,7 @@ async function fetchViaOneProxy<T>(
     } catch {
       /* ignore */
     }
-    throw new Error(`Minivagas proxy HTTP ${res.status}${detail}`);
+    throw new Error(`DrVagas proxy HTTP ${res.status}${detail}`);
   }
   return (await res.json()) as T;
 }
@@ -80,7 +80,7 @@ async function fetchViaProxy<T>(
   }
   throw lastError instanceof Error
     ? lastError
-    : new Error('Minivagas proxy indisponível');
+    : new Error('DrVagas proxy indisponível');
 }
 
 export async function getEstagius<T>(
