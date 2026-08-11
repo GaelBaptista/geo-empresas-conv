@@ -292,32 +292,56 @@ export function HiringRankPanel({
           ? 'Ordenado por volume de reprovações'
           : 'Ordenado por volume de faltas';
 
+  const decididos =
+    totals.contratados + totals.reprovados + totals.naoCompareceu;
+  const emEntrevista = totals.emFunil;
+
   const kpis = [
     {
       label: 'Candidatos',
       value: totals.enviados,
       tone: 'border-l-foreground/25',
-      hint: 'Enviados no período (inclui em entrevista)',
+      detail:
+        emEntrevista > 0
+          ? `${emEntrevista.toLocaleString('pt-BR')} em entrevista`
+          : null,
+      hint: (
+        <div className="max-w-[260px] space-y-1.5 text-left">
+          <p className="font-medium">Enviados no período</p>
+          <p>
+            {totals.enviados.toLocaleString('pt-BR')} ={' '}
+            {decididos.toLocaleString('pt-BR')} decididos +{' '}
+            {emEntrevista.toLocaleString('pt-BR')} ainda em entrevista.
+          </p>
+          <p className="text-primary-foreground/80">
+            Não é o mesmo número do filtro “só entrevista” no DrVagas (lá conta
+            quem está nesse status pela data da entrevista).
+          </p>
+        </div>
+      ),
     },
     {
       label: 'Contratados',
       value: totals.contratados,
       tone: 'border-l-sky-500',
+      detail: null as string | null,
       hint: 'Contratações no período',
     },
     {
       label: 'Reprovados',
       value: totals.reprovados,
       tone: 'border-l-rose-500',
+      detail: null as string | null,
       hint: 'Reprovações no período',
     },
     {
       label: 'Faltas',
       value: totals.naoCompareceu,
       tone: 'border-l-amber-500',
+      detail: null as string | null,
       hint: 'Não comparecimentos no período',
     },
-  ] as const;
+  ];
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -409,15 +433,24 @@ export function HiringRankPanel({
             >
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground cursor-help">
-                    {kpi.label}
-                  </p>
+                  <div className="cursor-help">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {kpi.label}
+                    </p>
+                    <p className="mt-1 text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
+                      {kpi.value.toLocaleString('pt-BR')}
+                    </p>
+                    {kpi.detail ? (
+                      <p className="mt-1 text-[11px] font-medium text-sky-700 dark:text-sky-300">
+                        {kpi.detail}
+                      </p>
+                    ) : null}
+                  </div>
                 </TooltipTrigger>
-                <TooltipContent>{kpi.hint}</TooltipContent>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  {kpi.hint}
+                </TooltipContent>
               </Tooltip>
-              <p className="mt-1 text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
-                {kpi.value.toLocaleString('pt-BR')}
-              </p>
             </div>
           ))}
         </div>
