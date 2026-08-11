@@ -70,4 +70,8 @@ export const VIEW_META = {
     title: 'Ranking DrVagas',
     description: 'Empresas que mais aprovam e reprovam candidatos',
   },
+  dashboardTv: {
+    title: 'Dashboard TV',
+    description: 'Painel de movimentações, KPIs e vagas preenchidas',
+  },
 } as const;

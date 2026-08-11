@@ -108,4 +108,4 @@ export interface ScheduleItem {
   matchConfidence: 'id' | 'exact' | 'fuzzy' | 'none' | 'manual';
 }
 
-export type ViewMode = 'map' | 'visits' | 'ranking';
+export type ViewMode = 'map' | 'visits' | 'ranking' | 'dashboardTv';

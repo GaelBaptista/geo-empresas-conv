@@ -372,7 +372,7 @@ export function HiringRankPanel({
                 <CalendarRange className="size-3.5" />
                 Período
                 <span className="font-normal normal-case tracking-normal text-muted-foreground/80">
-                  · histórico desde ago/2026
+                  · Geral desde ago/2026 (acumulado)
                 </span>
               </div>
               <div className="flex gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1 scrollbar-thin">

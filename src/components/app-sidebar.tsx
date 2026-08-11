@@ -1,4 +1,4 @@
-import { Map, Calendar, Trophy, MapPin, RefreshCw, LogOut } from 'lucide-react';
+import { Map, Calendar, Trophy, Tv, MapPin, RefreshCw, LogOut } from 'lucide-react';
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +27,7 @@ const NAV_ITEMS: {
   { id: 'map', label: 'Mapa', icon: Map },
   { id: 'visits', label: 'Agenda', icon: Calendar, countKey: 'pending' },
   { id: 'ranking', label: 'Ranking', icon: Trophy },
+  // { id: 'dashboardTv', label: 'Dashboard TV', icon: Tv },
 ];
 
 interface AppSidebarProps {

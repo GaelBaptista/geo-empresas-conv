@@ -49,6 +49,8 @@ export type DrvagasCandidato = {
   cnpj?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  /** Pode vir null na API — período do ranking usa updated_at/created_at. */
+  data_contratacao?: string | null;
   job_posting?: {
     id?: number;
     company_name?: string | null;
@@ -240,6 +242,34 @@ function isDateInYearMonth(raw: string | null | undefined, ym: YearMonth): boole
   return date.getFullYear() === ym.year && date.getMonth() + 1 === ym.month;
 }
 
+/** Ano/mês do evento ≥ ym (ex.: Geral acumulado desde ago/2026). */
+function isDateOnOrAfterYearMonth(
+  raw: string | null | undefined,
+  ym: YearMonth
+): boolean {
+  if (!raw) return false;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return false;
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return year > ym.year || (year === ym.year && month >= ym.month);
+}
+
+/** Data usada no filtro de período (data_contratacao null não derruba o registro). */
+function candidatoActivityDate(item: DrvagasCandidato): string {
+  return item.updated_at || item.created_at || '';
+}
+
+function freezeActivityDate(entry: FreezeEntry): string {
+  return (
+    entry.outcomeAt ||
+    entry.lastSeenAt ||
+    entry.firstSeenAt ||
+    entry.updatedAtApi ||
+    ''
+  );
+}
+
 type Counts = {
   reprovados: number;
   contratados: number;
@@ -370,21 +400,27 @@ export function filterCandidatosByStatus(
 }
 
 function isInCurrentMonth(item: DrvagasCandidato, now = new Date()): boolean {
-  return isDateInYearMonth(item.updated_at || item.created_at || '', {
+  return isDateInYearMonth(candidatoActivityDate(item), {
     year: now.getFullYear(),
     month: now.getMonth() + 1,
   });
 }
 
 function isInYearMonth(item: DrvagasCandidato, ym: YearMonth): boolean {
-  return isDateInYearMonth(item.updated_at || item.created_at || '', ym);
+  return isDateInYearMonth(candidatoActivityDate(item), ym);
+}
+
+function isOnOrAfterYearMonth(item: DrvagasCandidato, ym: YearMonth): boolean {
+  return isDateOnOrAfterYearMonth(candidatoActivityDate(item), ym);
 }
 
 export function filterCandidatosByPeriod(
   list: DrvagasCandidato[],
   period: HiringPeriod
 ): DrvagasCandidato[] {
-  if (period === 'all') return list;
+  if (period === 'all') {
+    return filterCandidatosSinceYearMonth(list, RANKING_HISTORY_START);
+  }
   return list.filter((item) => isInCurrentMonth(item));
 }
 
@@ -393,6 +429,14 @@ export function filterCandidatosByYearMonth(
   ym: YearMonth
 ): DrvagasCandidato[] {
   return list.filter((item) => isInYearMonth(item, ym));
+}
+
+/** Acumulado desde o mês (inclusive) — usado no Geral. */
+export function filterCandidatosSinceYearMonth(
+  list: DrvagasCandidato[],
+  ym: YearMonth
+): DrvagasCandidato[] {
+  return list.filter((item) => isOnOrAfterYearMonth(item, ym));
 }
 
 export async function fetchDrvagasUsers(): Promise<DrvagasUser[]> {
@@ -1007,9 +1051,11 @@ function isFreezeEntryInMonth(entry: FreezeEntry, now = new Date()): boolean {
 }
 
 function isFreezeEntryInYearMonth(entry: FreezeEntry, ym: YearMonth): boolean {
-  const raw =
-    entry.outcomeAt || entry.lastSeenAt || entry.firstSeenAt || entry.updatedAtApi || '';
-  return isDateInYearMonth(raw, ym);
+  return isDateInYearMonth(freezeActivityDate(entry), ym);
+}
+
+function isFreezeEntryOnOrAfterYearMonth(entry: FreezeEntry, ym: YearMonth): boolean {
+  return isDateOnOrAfterYearMonth(freezeActivityDate(entry), ym);
 }
 
 /** Espelha a contagem do grupo em cada CNPJ membro (para ficha da empresa). */
@@ -1242,23 +1288,22 @@ function buildPeriodSlice(
   naoCompareceu: DrvagasCandidato[];
   emFunil: DrvagasCandidato[];
 } {
-  if (!ym) {
-    return {
-      volumeReprovados: source.volumeReprovados,
-      volumeContratados: source.volumeContratados,
-      volumeNaoCompareceu: source.volumeNaoCompareceu,
-      volumeEntrevista: source.volumeEntrevista,
-      reprovados: source.reprovadosEmpresa,
-      contratados: source.contratados,
-      naoCompareceu: source.naoCompareceu,
-      emFunil: source.emEntrevista,
-    };
-  }
+  // null = Geral → acumulado desde RANKING_HISTORY_START (não todo o histórico)
+  const filterVolume = (list: DrvagasCandidato[]) =>
+    ym
+      ? filterCandidatosByYearMonth(list, ym)
+      : filterCandidatosSinceYearMonth(list, RANKING_HISTORY_START);
+  const filterFreeze = (entries: FreezeEntry[]) =>
+    ym
+      ? entries.filter((e) => isFreezeEntryInYearMonth(e, ym))
+      : entries.filter((e) =>
+          isFreezeEntryOnOrAfterYearMonth(e, RANKING_HISTORY_START)
+        );
 
-  const volumeReprovados = filterCandidatosByYearMonth(source.volumeReprovados, ym);
-  const volumeContratados = filterCandidatosByYearMonth(source.volumeContratados, ym);
-  const volumeNaoCompareceu = filterCandidatosByYearMonth(source.volumeNaoCompareceu, ym);
-  const volumeEntrevista = filterCandidatosByYearMonth(source.volumeEntrevista, ym);
+  const volumeReprovados = filterVolume(source.volumeReprovados);
+  const volumeContratados = filterVolume(source.volumeContratados);
+  const volumeNaoCompareceu = filterVolume(source.volumeNaoCompareceu);
+  const volumeEntrevista = filterVolume(source.volumeEntrevista);
 
   if (!source.useFreeze) {
     return {
@@ -1266,28 +1311,28 @@ function buildPeriodSlice(
       volumeContratados,
       volumeNaoCompareceu,
       volumeEntrevista,
-      reprovados: filterCandidatosByYearMonth(source.reprovadosEmpresa, ym),
-      contratados: filterCandidatosByYearMonth(source.contratados, ym),
-      naoCompareceu: filterCandidatosByYearMonth(source.naoCompareceu, ym),
-      emFunil: filterCandidatosByYearMonth(source.emEntrevista, ym),
+      reprovados: filterVolume(source.reprovadosEmpresa),
+      contratados: filterVolume(source.contratados),
+      naoCompareceu: filterVolume(source.naoCompareceu),
+      emFunil: filterVolume(source.emEntrevista),
     };
   }
 
-  const freezeMonth = source.freezeEntries.filter((e) => isFreezeEntryInYearMonth(e, ym));
+  const freezePeriod = filterFreeze(source.freezeEntries);
   const reprovados = mergeCandidatosByJob(
     volumeReprovados,
-    freezeEntriesToCandidatos(freezeMonth, 'reprovado_empresa')
+    freezeEntriesToCandidatos(freezePeriod, 'reprovado_empresa')
   );
   const contratados = mergeCandidatosByJob(
     volumeContratados,
-    freezeEntriesToCandidatos(freezeMonth, 'contratado')
+    freezeEntriesToCandidatos(freezePeriod, 'contratado')
   );
   const naoCompareceu = mergeCandidatosByJob(
     volumeNaoCompareceu,
-    freezeEntriesToCandidatos(freezeMonth, 'nao_compareceu_empresa')
+    freezeEntriesToCandidatos(freezePeriod, 'nao_compareceu_empresa')
   );
   const emFunil = excludeDecidedFromFunnel(
-    freezeEntriesToCandidatos(freezeMonth, 'em_funil'),
+    freezeEntriesToCandidatos(freezePeriod, 'em_funil'),
     [...reprovados, ...contratados, ...naoCompareceu]
   );
 
@@ -1303,29 +1348,16 @@ function buildPeriodSlice(
   };
 }
 
-/** Rankings + totais para Geral ou um mês específico do histórico. */
+/** Rankings + totais para Geral (desde ago/2026) ou um mês específico. */
 export function rankingsForSelection(
   bundle: DrvagasBundle,
   companies: Company[],
   selection: HiringPeriodSelection
 ): PeriodRankings {
-  if (selection.type === 'all') {
-    return {
-      topRejecters: bundle.topRejecters,
-      topHired: bundle.topHired,
-      topNoShows: bundle.topNoShows,
-      topReputation: bundle.topReputation,
-      totals: {
-        enviados: bundle.totals.enviados,
-        contratados: bundle.totals.contratados,
-        reprovados: bundle.totals.reprovados,
-        naoCompareceu: bundle.totals.naoCompareceu,
-        emFunil: bundle.totals.emFunil,
-      },
-    };
-  }
-
-  const ym = { year: selection.year, month: selection.month };
+  const ym =
+    selection.type === 'all'
+      ? null
+      : { year: selection.year, month: selection.month };
   const slice = buildPeriodSlice(bundle.source, ym);
   const hiringByCnpj = buildHiringStatsByCnpj(
     slice.volumeReprovados,
@@ -1518,11 +1550,26 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
   const observacoesByCnpj = buildObservacoesByCnpj(users);
   const groupIndex = buildDrvagasGroupIndex(users);
 
-  const hiringByCnpj = buildHiringStatsByCnpj(
+  // Geral = acumulado desde ago/2026 (não o histórico completo da API)
+  const sourceAll: DrvagasRankingSource = {
+    useFreeze,
+    freezeEntries,
     volumeReprovados,
     volumeContratados,
     volumeNaoCompareceu,
-    volumeEntrevista
+    volumeEntrevista,
+    reprovadosEmpresa,
+    contratados,
+    naoCompareceu,
+    emEntrevista,
+  };
+  const geral = buildPeriodSlice(sourceAll, null);
+
+  const hiringByCnpj = buildHiringStatsByCnpj(
+    geral.volumeReprovados,
+    geral.volumeContratados,
+    geral.volumeNaoCompareceu,
+    geral.volumeEntrevista
   );
   const hiringByCnpjMonth = buildHiringStatsByCnpj(
     volumeReprovadosMes,
@@ -1534,10 +1581,10 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
   const reputationByGroup = buildReputationStatsByGroup(
     companies,
     groupIndex,
-    reprovadosEmpresa,
-    contratados,
-    naoCompareceu,
-    emEntrevista
+    geral.reprovados,
+    geral.contratados,
+    geral.naoCompareceu,
+    geral.emFunil
   );
   const reputationByGroupMonth = buildReputationStatsByGroup(
     companies,
@@ -1556,10 +1603,10 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
 
   // Contagens reais por CNPJ (para o menu de unidades — não espelha o grupo)
   const reputationStatsByCnpj = buildHiringStatsByCnpj(
-    reprovadosEmpresa,
-    contratados,
-    naoCompareceu,
-    emEntrevista
+    geral.reprovados,
+    geral.contratados,
+    geral.naoCompareceu,
+    geral.emFunil
   );
   const reputationStatsByCnpjMonth = buildHiringStatsByCnpj(
     reprovadosMes,
@@ -1588,7 +1635,7 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
     recruitersByCnpj,
     topRejecters: buildSingleSideRanking(
       companies,
-      volumeReprovados,
+      geral.volumeReprovados,
       groupIndex,
       null,
       hiringByCnpj,
@@ -1596,7 +1643,7 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
     ),
     topHired: buildSingleSideRanking(
       companies,
-      volumeContratados,
+      geral.volumeContratados,
       groupIndex,
       null,
       hiringByCnpj,
@@ -1604,7 +1651,7 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
     ),
     topNoShows: buildSingleSideRanking(
       companies,
-      volumeNaoCompareceu,
+      geral.volumeNaoCompareceu,
       groupIndex,
       null,
       hiringByCnpj,
@@ -1649,20 +1696,23 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
     matchedObservacoes,
     matchedHiring,
     totals: {
-      reprovados: volumeReprovados.length,
-      contratados: volumeContratados.length,
-      naoCompareceu: volumeNaoCompareceu.length,
-      emFunil: emEntrevista.length,
+      reprovados: geral.volumeReprovados.length,
+      contratados: geral.volumeContratados.length,
+      naoCompareceu: geral.volumeNaoCompareceu.length,
+      emFunil: geral.emFunil.length,
       enviados: useFreeze
         ? new Set(
-            [...reprovadosEmpresa, ...contratados, ...naoCompareceu, ...emEntrevista].map(
-              candidatoJobKey
-            )
+            [
+              ...geral.reprovados,
+              ...geral.contratados,
+              ...geral.naoCompareceu,
+              ...geral.emFunil,
+            ].map(candidatoJobKey)
           ).size
-        : volumeContratados.length +
-          volumeReprovados.length +
-          volumeNaoCompareceu.length +
-          volumeEntrevista.length,
+        : geral.volumeContratados.length +
+          geral.volumeReprovados.length +
+          geral.volumeNaoCompareceu.length +
+          geral.volumeEntrevista.length,
       reprovadosMes: volumeReprovadosMes.length,
       contratadosMes: volumeContratadosMes.length,
       naoCompareceuMes: volumeNaoCompareceuMes.length,
@@ -1674,17 +1724,6 @@ export async function loadDrvagasBundle(companies: Company[]): Promise<DrvagasBu
         freezePayload?.lastSyncAt || freezePayload?.updatedAt || new Date().toISOString(),
     },
     groupIndex,
-    source: {
-      useFreeze,
-      freezeEntries,
-      volumeReprovados,
-      volumeContratados,
-      volumeNaoCompareceu,
-      volumeEntrevista,
-      reprovadosEmpresa,
-      contratados,
-      naoCompareceu,
-      emEntrevista,
-    },
+    source: sourceAll,
   };
 }

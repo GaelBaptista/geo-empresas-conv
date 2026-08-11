@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Loader2, AlertCircle, RefreshCw, CalendarDays } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useAppData } from '@/hooks/useAppData';
@@ -12,6 +12,7 @@ import { MapView } from '@/components/map/MapView';
 import { CompanyDetailSheet } from '@/components/companies/CompanyDetailSheet';
 import { SchedulesAgenda } from '@/components/visits/SchedulesAgenda';
 import { HiringRankPanel } from '@/components/dashboard/HiringRankPanel';
+import { DashboardTv } from '@/components/dashboard/DashboardTv';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +20,7 @@ import { cn } from '@/lib/utils';
 
 export default function App() {
   const { user, isAuthenticated, isSigningIn, authError, signIn, signOut } = useAuth();
+  const [isTvFullscreen, setIsTvFullscreen] = useState(false);
 
   const {
     position: userLocation,
@@ -93,7 +95,7 @@ export default function App() {
   return (
     <>
       <LocationRequiredGate
-        open={needsLocationGate}
+        open={needsLocationGate && !isTvFullscreen}
         isRequesting={locationRequesting}
         onAllow={requestLocation}
         onUseFortaleza={useFortaleza}
@@ -101,7 +103,10 @@ export default function App() {
 
       <AppShell
         activeView={activeView}
-        onViewChange={setActiveView}
+        onViewChange={(view) => {
+          setIsTvFullscreen(false);
+          setActiveView(view);
+        }}
         onRequestReset={() => setIsResetDialogOpen(true)}
         onSignOut={signOut}
         userName={user?.name}
@@ -246,6 +251,16 @@ export default function App() {
               />
             )}
           </div>
+        )}
+
+        {activeView === 'dashboardTv' && (
+          <DashboardTv
+            key="dashboard-tv"
+            drvagas={drvagas}
+            fullscreen={isTvFullscreen}
+            onEnterFullscreen={() => setIsTvFullscreen(true)}
+            onExitFullscreen={() => setIsTvFullscreen(false)}
+          />
         )}
       </AppShell>
 
